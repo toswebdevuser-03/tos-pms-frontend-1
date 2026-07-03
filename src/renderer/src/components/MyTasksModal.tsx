@@ -1,7 +1,11 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Project } from '../types'
 import { useApp } from '../context/AppContext'
+import { useData } from '../context/DataContext'
+import { nameById } from '../lib/people'
 import Icon from './Icon'
+import { useFilters } from './FilterBar'
+import { useEscapeKey } from '../lib/useEscapeKey'
 
 interface TaskRow extends Record<string, unknown> {
   id: number
@@ -30,8 +34,12 @@ const fmtClock = (sec: number): string => {
 }
 
 export default function MyTasksModal({ projects, onClose, onToast }: Props) {
+  useEscapeKey(onClose)
   const { currentMember, members } = useApp()
-  const [tasks, setTasks] = useState<TaskRow[]>([])
+  // Cross-project tasks come from the shared data layer (one cached load) instead
+  // of a per-project fetch loop.
+  const { tasks: allTasks, refreshTasks } = useData()
+  const projName = useMemo(() => new Map(projects.map((p) => [Number(p.id), p.name])), [projects])
   const [tab, setTab] = useState<'mine' | 'delegated'>('mine')
   const [timers, setTimers] = useState<TimerState>(loadTimers)
   const [, setTick] = useState(0)
@@ -81,26 +89,16 @@ export default function MyTasksModal({ projects, onClose, onToast }: Props) {
     else onToast(res.error ?? 'Log failed', 'error')
   }
 
-  const nameById = useMemo(() => {
-    const m = new Map<string, string>()
-    members.forEach((mb) => m.set(String(mb.id), mb.name))
-    return m
-  }, [members])
-
-  const load = useCallback(async () => {
+  const tasks = useMemo<TaskRow[]>(() => {
     const all: TaskRow[] = []
-    for (const p of projects) {
-      const res = await window.api.items.getByProject(p.id, 'task')
-      if (res.ok) {
-        for (const t of res.data as Record<string, unknown>[]) {
-          all.push({ ...(t as TaskRow), project_id: p.id, projectName: p.name })
-        }
-      }
+    for (const t of allTasks) {
+      const pid = Number(t.project_id)
+      const projectName = projName.get(pid)
+      if (projectName === undefined) continue // only projects passed in via props
+      all.push({ ...(t as TaskRow), project_id: pid, projectName })
     }
-    setTasks(all)
-  }, [projects])
-
-  useEffect(() => { load() }, [load])
+    return all
+  }, [allTasks, projName])
 
   const writeTask = async (t: TaskRow, patch: Record<string, unknown>): Promise<void> => {
     await window.api.items.update('task', {
@@ -109,7 +107,7 @@ export default function MyTasksModal({ projects, onClose, onToast }: Props) {
       deadline: t.deadline ?? '', status: t.status ?? 'Not Started',
       acceptance: t.acceptance ?? '', assigned_by: t.assigned_by ?? '', ...patch
     })
-    load()
+    refreshTasks()
   }
 
   const mine = useMemo(
@@ -122,11 +120,22 @@ export default function MyTasksModal({ projects, onClose, onToast }: Props) {
   )
 
   const rows = tab === 'mine' ? mine : delegated
+  const { filtered, bar } = useFilters(rows, {
+    searchKeys: ['name', 'projectName'],
+    searchPlaceholder: 'Search tasks…',
+    selects: [
+      { key: 'status', label: 'Status' },
+      { key: 'projectName', label: 'Project' }
+    ],
+    dateKey: 'deadline',
+    dateLabel: 'Deadline'
+  })
+  const shownRows = filtered as TaskRow[]
   const badge = (v: string): React.JSX.Element | string =>
     v ? <span className={`badge badge-${v.toLowerCase().replace(/\s+/g, '-')}`}>{v}</span> : '—'
 
   return (
-    <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal" style={{ width: 820 }}>
         <div className="modal-header">
           <h3><Icon name="checkSquare" size={18} /> My Tasks</h3>
@@ -149,6 +158,11 @@ export default function MyTasksModal({ projects, onClose, onToast }: Props) {
               {rows.length === 0 ? (
                 <div className="attach-empty">{tab === 'mine' ? 'No tasks assigned to you.' : 'You haven’t delegated any tasks.'}</div>
               ) : (
+                <>
+                {bar}
+                {shownRows.length === 0 ? (
+                  <div className="attach-empty">No tasks match the current filters.</div>
+                ) : (
                 <table className="mini-table">
                   <thead>
                     <tr>
@@ -160,11 +174,11 @@ export default function MyTasksModal({ projects, onClose, onToast }: Props) {
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((t) => (
+                    {shownRows.map((t) => (
                       <tr key={`${t.project_id}-${t.id}`}>
                         <td>{t.projectName}</td>
                         <td>{String(t.name ?? '')}</td>
-                        {tab === 'delegated' && <td>{nameById.get(String(t.assigned_member_id)) || '—'}</td>}
+                        {tab === 'delegated' && <td>{nameById(members, t.assigned_member_id, '—')}</td>}
                         <td>{String(t.deadline ?? '') || '—'}</td>
                         <td>{badge(String(t.acceptance ?? ''))}</td>
                         <td>{badge(String(t.status ?? ''))}</td>
@@ -201,6 +215,8 @@ export default function MyTasksModal({ projects, onClose, onToast }: Props) {
                     ))}
                   </tbody>
                 </table>
+                )}
+                </>
               )}
             </>
           )}

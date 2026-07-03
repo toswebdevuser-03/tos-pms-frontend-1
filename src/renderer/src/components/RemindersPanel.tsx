@@ -2,29 +2,48 @@ import { useState, useEffect, useCallback } from 'react'
 import { Reminder, Project } from '../types'
 import { useApp } from '../context/AppContext'
 import Icon, { IconName } from './Icon'
+import { loadUpdates, getLastSeen, markSeen, getReadKeys, markKeysRead, ProjectUpdate } from '../lib/projectUpdates'
+import { useEscapeKey } from '../lib/useEscapeKey'
+
+const UPDATE_ICON: Record<string, IconName> = { task: 'checkSquare', rfi: 'inbox', dispatch: 'upload', status: 'barChart' }
+const fmtAgo = (at: string): string => {
+  const d = new Date(at.replace(' ', 'T') + 'Z'); const ms = Date.now() - d.getTime()
+  if (isNaN(ms)) return at
+  const h = Math.floor(ms / 3600000)
+  if (h < 1) return 'just now'
+  if (h < 24) return `${h}h ago`
+  return `${Math.floor(h / 24)}d ago`
+}
 
 interface Props {
   projects: Project[]
   onClose: () => void
   onToast: (msg: string, type?: 'success' | 'error') => void
   onNavigate?: (projectId: number, tab: string) => void
+  onCleared?: () => void // clear the topbar unseen-updates badge without closing
 }
 
 const SEV_LABEL: Record<string, string> = { overdue: 'Overdue', due: 'Due today', upcoming: 'Upcoming' }
-const KIND_ICON: Record<string, IconName> = { wip: 'clipboard', dispatch: 'upload', task: 'checkSquare' }
+const KIND_ICON: Record<string, IconName> = { wip: 'clipboard', dispatch: 'upload', task: 'checkSquare', budget: 'barChart' }
 
 interface TaskRow extends Record<string, unknown> { id: number; project_id: number; projectName: string }
 
-export default function RemindersPanel({ projects, onClose, onToast, onNavigate }: Props) {
-  const { currentMember } = useApp()
+export default function RemindersPanel({ projects, onClose, onToast, onNavigate, onCleared }: Props) {
+  useEscapeKey(onClose)
+  const { currentMember, members } = useApp()
   const [list, setList] = useState<Reminder[]>([])
   const [myTasks, setMyTasks] = useState<TaskRow[]>([])
+  const [updates, setUpdates] = useState<ProjectUpdate[]>([])
+  const [seenAt, setSeenAt] = useState<string>(() => getLastSeen()) // NEW badges compare against this
+  const [readKeys, setReadKeys] = useState<Set<string>>(() => getReadKeys())
+  const [selectedUpd, setSelectedUpd] = useState<Set<string>>(new Set()) // ticked recent-update keys
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
     setLoading(true)
     const res = await window.api.reminders.get()
     if (res.ok) setList(res.data as Reminder[])
+    setUpdates(await loadUpdates(projects.map((p) => ({ id: p.id, name: p.name })), { me: currentMember?.id, members }))
     // My tasks across projects (for "needs your response" + my upcoming).
     const mine: TaskRow[] = []
     if (currentMember) {
@@ -37,9 +56,26 @@ export default function RemindersPanel({ projects, onClose, onToast, onNavigate 
     }
     setMyTasks(mine)
     setLoading(false)
-  }, [projects, currentMember])
+  }, [projects, currentMember, members])
+
+  // Clear the notifications: mark everything seen (removes NEW badges + topbar count)
+  // and empty the recent-updates list from view.
+  const clearAll = (): void => {
+    markSeen(); setSeenAt(getLastSeen()); setUpdates([]); onCleared?.()
+    onToast('Inbox cleared')
+  }
+
+  // Per-item read: tick specific recent updates, then mark just those as read.
+  const toggleUpd = (k: string): void => setSelectedUpd((s) => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n })
+  const markSelectedRead = (): void => {
+    if (!selectedUpd.size) return
+    markKeysRead([...selectedUpd]); setReadKeys(getReadKeys())
+    onToast(`Marked ${selectedUpd.size} as read`); setSelectedUpd(new Set())
+  }
 
   useEffect(() => { load() }, [load])
+  // Opening the Inbox marks current updates as seen (clears the topbar badge next poll).
+  useEffect(() => { markSeen() }, [])
 
   const writeTask = async (t: TaskRow, patch: Record<string, unknown>): Promise<void> => {
     await window.api.items.update('task', {
@@ -71,7 +107,7 @@ export default function RemindersPanel({ projects, onClose, onToast, onNavigate 
   const go = (t: TaskRow): void => { if (onNavigate) { onNavigate(t.project_id, 'Tasks'); onClose() } }
 
   return (
-    <div className="drawer-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="drawer-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="drawer">
         <div className="drawer-header">
           <div>
@@ -82,7 +118,8 @@ export default function RemindersPanel({ projects, onClose, onToast, onNavigate 
         </div>
         <div className="drawer-toolbar">
           <button className="btn btn-secondary btn-sm" onClick={notify}><Icon name="bellRing" size={15} /> Desktop notify</button>
-          <button className="btn btn-secondary btn-sm" onClick={load}>↻ Refresh</button>
+          <button className="btn btn-secondary btn-sm" onClick={load}><Icon name="refresh" size={15} /> Refresh</button>
+          <button className="btn btn-secondary btn-sm" onClick={clearAll} title="Mark everything as read and clear recent updates"><Icon name="checkCircle" size={15} /> Mark all read</button>
         </div>
         <div className="drawer-body">
           {loading ? (
@@ -130,10 +167,35 @@ export default function RemindersPanel({ projects, onClose, onToast, onNavigate 
                       </div>
                     </div>
                     {r.assigneeEmail && (
-                      <button className="btn btn-secondary btn-sm" onClick={() => emailOne(r)}>✉ Email</button>
+                      <button className="btn btn-secondary btn-sm" onClick={() => emailOne(r)}><Icon name="send" size={14} /> Email</button>
                     )}
                   </div>
                 ))
+              )}
+
+              <div className="inbox-section" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                <span>Recent updates</span>
+                {selectedUpd.size > 0 && <button className="btn btn-secondary btn-xs" onClick={markSelectedRead}><Icon name="checkCircle" size={13} /> Mark {selectedUpd.size} read</button>}
+              </div>
+              {updates.length === 0 ? (
+                <div className="attach-empty">No recent project activity.</div>
+              ) : (
+                updates.map((u) => {
+                  const isNew = u.at > seenAt && !readKeys.has(u.key)
+                  const tab = u.kind === 'task' ? 'Tasks' : u.kind === 'rfi' ? 'RFI/Queries' : u.kind === 'dispatch' ? 'Dispatch' : 'Status'
+                  return (
+                    <div key={u.key} className="reminder-card">
+                      <input type="checkbox" checked={selectedUpd.has(u.key)} onChange={() => toggleUpd(u.key)} title="Select to mark read" style={{ margin: '2px 4px 0 0' }} />
+                      <div className="reminder-icon"><Icon name={UPDATE_ICON[u.kind] ?? 'bell'} size={18} /></div>
+                      <div className="reminder-main">
+                        <div className="reminder-title" onClick={() => { if (onNavigate) { onNavigate(u.projectId, tab); onClose() } }} style={{ cursor: onNavigate ? 'pointer' : 'default' }}>
+                          {u.title}{isNew && <span className="badge badge-resolved" style={{ marginLeft: 6 }}>NEW</span>}
+                        </div>
+                        <div className="reminder-meta"><span>{u.projectName}</span><span>· {fmtAgo(u.at)}</span></div>
+                      </div>
+                    </div>
+                  )
+                })
               )}
             </>
           )}

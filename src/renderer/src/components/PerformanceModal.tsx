@@ -1,14 +1,17 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { Project } from '../types'
+import { Project, Member } from '../types'
 import { useApp } from '../context/AppContext'
 import { overallOf } from '../tabs/FeedbackTab'
 import { roleLabel } from '../roles'
 import Avatar from './Avatar'
 import Icon from './Icon'
+import { useFilters } from './FilterBar'
+import { useEscapeKey } from '../lib/useEscapeKey'
 
 interface Props {
   projects: Project[]
   onClose: () => void
+  embedded?: boolean // rendered inside the Talent hub (body only, no modal chrome)
 }
 
 type Row = Record<string, unknown>
@@ -16,8 +19,11 @@ const num = (v: unknown): number => { const n = parseFloat(String(v ?? '')); ret
 const avg = (ns: number[]): number => (ns.length ? Math.round((ns.reduce((s, n) => s + n, 0) / ns.length) * 10) / 10 : 0)
 const CRITERIA = ['quality', 'timeliness', 'communication', 'ownership'] as const
 
-export default function PerformanceModal({ projects, onClose }: Props) {
-  const { currentMember, members, isManager, isCompanyAdmin } = useApp()
+export default function PerformanceModal({ projects, onClose, embedded }: Props) {
+  // Escape should only dismiss this as a standalone modal — when embedded in the
+  // Talent hub, TalentModal itself owns the overlay and its own Escape handler.
+  useEscapeKey(embedded ? () => {} : onClose)
+  const { currentMember, members, isLead } = useApp()
   const [feedback, setFeedback] = useState<Row[]>([])
   const [tasks, setTasks] = useState<Row[]>([])
 
@@ -37,12 +43,17 @@ export default function PerformanceModal({ projects, onClose }: Props) {
 
   useEffect(() => { load() }, [load])
 
-  const myDiscipline = currentMember?.discipline || ''
-  const shown = useMemo(() => members.filter((m) => {
-    if (isCompanyAdmin) return true
-    if (isManager && myDiscipline) return m.discipline === myDiscipline || m.id === currentMember?.id
+  const visible = useMemo(() => members.filter((m) => {
+    if (isLead) return true // Team Lead and above see everyone's performance
     return m.id === currentMember?.id
-  }), [members, isCompanyAdmin, isManager, myDiscipline, currentMember])
+  }), [members, isLead, currentMember])
+
+  const { filtered: shownRows, bar } = useFilters(visible as unknown as Record<string, unknown>[], {
+    searchKeys: ['name'],
+    searchPlaceholder: 'Search members…',
+    selects: [{ key: 'discipline', label: 'Discipline' }]
+  })
+  const shown = shownRows as unknown as Member[]
 
   const stats = useMemo(() => {
     return shown.map((m) => {
@@ -63,17 +74,12 @@ export default function PerformanceModal({ projects, onClose }: Props) {
     })
   }, [shown, feedback, tasks])
 
-  return (
-    <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{ width: 880 }}>
-        <div className="modal-header">
-          <h3><Icon name="barChart" size={18} /> Performance</h3>
-          <button className="btn-icon" onClick={onClose}><Icon name="close" size={18} /></button>
-        </div>
-        <div className="modal-body">
+  const body = (
+    <>
           <p className="login-sub" style={{ marginBottom: 12 }}>
             Ratings are averaged from per-project feedback. Task completion is across all visible projects.
           </p>
+          {bar}
           <table className="mini-table">
             <thead>
               <tr>
@@ -109,7 +115,19 @@ export default function PerformanceModal({ projects, onClose }: Props) {
               )))}
             </div>
           )}
+    </>
+  )
+
+  if (embedded) return body
+
+  return (
+    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{ width: 880 }}>
+        <div className="modal-header">
+          <h3><Icon name="barChart" size={18} /> Performance</h3>
+          <button className="btn-icon" onClick={onClose}><Icon name="close" size={18} /></button>
         </div>
+        <div className="modal-body">{body}</div>
         <div className="modal-footer">
           <button className="btn btn-secondary" onClick={onClose}>Close</button>
         </div>

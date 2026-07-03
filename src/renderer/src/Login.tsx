@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useApp } from './context/AppContext'
+import Icon from './components/Icon'
 
 /**
  * Sign-in screen (remote/multi-user mode only). Handles first-login password
@@ -43,7 +44,7 @@ export default function Login() {
   return (
     <div className="login-screen">
       <div className="login-card">
-        <div className="login-brand"><span className="brand-mark">▦</span> TOS Tracker</div>
+        <div className="login-brand"><Icon name="grid" size={18} className="brand-mark" /> TOS Tracker</div>
 
         {!resetMode ? (
           <form onSubmit={submitLogin}>

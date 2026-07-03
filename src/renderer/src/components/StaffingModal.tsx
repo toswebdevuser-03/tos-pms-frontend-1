@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Project, Member } from '../types'
 import { useApp } from '../context/AppContext'
+import { nameById, activeMembers } from '../lib/people'
 import Icon, { DisciplineIcon } from './Icon'
 import Avatar from './Avatar'
 import EmptyState from './EmptyState'
+import { useEscapeKey } from '../lib/useEscapeKey'
 
 interface Props {
   projects: Project[]
@@ -12,12 +14,16 @@ interface Props {
 }
 
 export default function StaffingModal({ projects, onClose, onToast }: Props) {
-  const { members, isManager } = useApp()
+  useEscapeKey(onClose)
+  const { members, isLead } = useApp()
   const [byProject, setByProject] = useState<Record<number, number[]>>({})
   const [dragId, setDragId] = useState<number | null>(null)
   const [overId, setOverId] = useState<number | null>(null)
+  const [rosterQuery, setRosterQuery] = useState('')
 
-  const roster = members.filter((m) => m.status !== 'left')
+  const allRoster = activeMembers(members)
+  const rq = rosterQuery.trim().toLowerCase()
+  const roster = !rq ? allRoster : allRoster.filter((m) => m.name.toLowerCase().includes(rq))
 
   const load = useCallback(async () => {
     const map: Record<number, number[]> = {}
@@ -30,10 +36,10 @@ export default function StaffingModal({ projects, onClose, onToast }: Props) {
   useEffect(() => { load() }, [load])
 
   const assign = async (projectId: number, memberId: number): Promise<void> => {
-    if (!isManager) { onToast('Only managers can staff projects', 'error'); return }
+    if (!isLead) { onToast('Only Team Leads and above can staff projects', 'error'); return }
     if ((byProject[projectId] ?? []).includes(memberId)) return
     const res = await window.api.projectMembers.assign(projectId, memberId)
-    if (res.ok) { const m = members.find((x) => x.id === memberId); onToast(`${m?.name ?? 'Member'} added`); load() }
+    if (res.ok) { onToast(`${nameById(members, memberId, 'Member')} added`); load() }
     else onToast(res.error ?? 'Assign failed', 'error')
   }
   const unassign = async (projectId: number, memberId: number): Promise<void> => {
@@ -42,10 +48,8 @@ export default function StaffingModal({ projects, onClose, onToast }: Props) {
     else onToast(res.error ?? 'Failed', 'error')
   }
 
-  const nameById = (id: number): string => members.find((m) => m.id === id)?.name ?? '—'
-
   return (
-    <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal" style={{ width: 920, maxWidth: '95vw' }}>
         <div className="modal-header">
           <h3><Icon name="userPlus" size={18} /> Staffing — drag people onto projects</h3>
@@ -58,11 +62,20 @@ export default function StaffingModal({ projects, onClose, onToast }: Props) {
           <div className="staff-layout">
             <div className="staff-roster">
               <div className="staff-col-head">Team ({roster.length})</div>
+              <div className="search-box" style={{ marginBottom: 8 }}>
+                <Icon name="search" size={14} />
+                <input
+                  type="text"
+                  placeholder="Search team…"
+                  value={rosterQuery}
+                  onChange={(e) => setRosterQuery(e.target.value)}
+                />
+              </div>
               {roster.map((m) => (
                 <div
                   key={m.id}
                   className={`staff-person${dragId === m.id ? ' dragging' : ''}`}
-                  draggable={isManager}
+                  draggable={isLead}
                   onDragStart={() => setDragId(m.id)}
                   onDragEnd={() => { setDragId(null); setOverId(null) }}
                 >
@@ -71,7 +84,7 @@ export default function StaffingModal({ projects, onClose, onToast }: Props) {
                   <span className="staff-person-role">{m.discipline || m.role}</span>
                 </div>
               ))}
-              {roster.length === 0 && <div className="attach-empty">No active members.</div>}
+              {roster.length === 0 && <div className="attach-empty">{rq ? `No members match "${rosterQuery}".` : 'No active members.'}</div>}
             </div>
 
             <div className="staff-projects">
@@ -97,7 +110,7 @@ export default function StaffingModal({ projects, onClose, onToast }: Props) {
                         ? <span className="staff-empty">Drop a person here</span>
                         : ids.map((id) => (
                           <span key={id} className="staff-chip" title="Click to remove" onClick={() => unassign(p.id, id)}>
-                            {nameById(id)}<span className="alloc-x"><Icon name="close" size={10} /></span>
+                            {nameById(members, id, '—')}<span className="alloc-x"><Icon name="close" size={10} /></span>
                           </span>
                         ))}
                     </div>

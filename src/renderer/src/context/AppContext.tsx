@@ -1,12 +1,13 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
 import { Member, Settings, AuthUser } from '../types'
-import { roleRank, RANK_COMPANY_ADMIN, RANK_MANAGER, RANK_LEAD } from '../roles'
+import { roleRank, RANK_COMPANY_ADMIN, RANK_MANAGER, RANK_LEAD, RANK_PROJECT_LEAD } from '../roles'
 
 interface AppContextValue {
   members: Member[]
   settings: Settings | null
   currentMember: Member | null
   isAdmin: boolean
+  isLead: boolean
   isManager: boolean
   isCompanyAdmin: boolean
   refreshMembers: () => Promise<void>
@@ -97,14 +98,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setupMode = !isRemote && !currentMember // local "no member selected" = full access
   const isCompanyAdmin = setupMode || rank >= RANK_COMPANY_ADMIN
   const isManager = isCompanyAdmin || rank >= RANK_MANAGER
-  const isAdmin = isCompanyAdmin || rank >= RANK_LEAD // Team Lead or above = project-admin powers
+  const isLead = isCompanyAdmin || rank >= RANK_LEAD // Team Lead or above = admin-lite (assign + full visibility)
+  const isAdmin = isCompanyAdmin || rank >= RANK_PROJECT_LEAD // Project Lead or above = project-admin powers
 
   const needsLogin = isRemote && authChecked && !authUser
 
   return (
     <AppContext.Provider
       value={{
-        members, settings, currentMember, isAdmin, isManager, isCompanyAdmin,
+        members, settings, currentMember, isAdmin, isLead, isManager, isCompanyAdmin,
         refreshMembers, refreshSettings, setCurrentMember,
         authMode, authUser, authChecked, needsLogin, refreshAuth, login, changePassword, logout
       }}

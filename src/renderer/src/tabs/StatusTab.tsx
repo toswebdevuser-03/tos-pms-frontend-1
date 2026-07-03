@@ -1,12 +1,15 @@
-import { useState, useEffect, useCallback } from 'react'
-import { ProjectStatus } from '../types'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { ProjectStatus, Member } from '../types'
+import { useApp } from '../context/AppContext'
+import { roleRank, RANK_MANAGER } from '../roles'
 
-const STATUS_OPTIONS = ['On-going', 'On-hold', 'Completed']
+const STATUS_OPTIONS = ['Yet to start', 'On-going', 'On-hold', 'Dispatched', 'Closed']
 const FACTOR: Record<string, number> = { 'Done': 1, 'In Progress': 0.5, 'Not Started': 0 }
 
 // Map legacy stage values onto the new options so old projects pre-select correctly.
 const LEGACY_STAGE: Record<string, string> = {
-  'On Hold': 'On-hold', Planning: 'On-going', Design: 'On-going', Construction: 'On-going', Completed: 'Completed'
+  'On Hold': 'On-hold', Planning: 'On-going', Design: 'On-going', Construction: 'On-going',
+  Completed: 'Closed', Resolved: 'Closed'
 }
 function normalizeStage(s: string): string {
   return STATUS_OPTIONS.includes(s) ? s : (LEGACY_STAGE[s] ?? 'On-going')
@@ -18,11 +21,14 @@ interface Props {
 }
 
 export default function StatusTab({ projectId, onToast }: Props) {
+  const { isLead } = useApp() // project status is project setup: Team Lead+ may edit; others view only
   const [status, setStatus] = useState<ProjectStatus | null>(null)
   const [overall, setOverall] = useState('On-going')
   const [notes, setNotes] = useState('')
   const [dirty, setDirty] = useState(false)
   const [tasks, setTasks] = useState<Record<string, unknown>[]>([])
+  const [members, setMembers] = useState<Member[]>([])
+  const [feedback, setFeedback] = useState<Record<string, unknown>[]>([])
 
   const load = useCallback(async () => {
     const res = await window.api.items.getByProject(projectId, 'status')
@@ -35,11 +41,26 @@ export default function StatusTab({ projectId, onToast }: Props) {
     setDirty(false)
     const tres = await window.api.items.getByProject(projectId, 'task')
     if (tres.ok) setTasks(tres.data as Record<string, unknown>[])
+    const mres = await window.api.projectMembers.get(projectId)
+    if (mres.ok) setMembers(mres.data as Member[])
+    const fres = await window.api.items.getByProject(projectId, 'feedback')
+    if (fres.ok) setFeedback(fres.data as Record<string, unknown>[])
   }, [projectId])
 
   useEffect(() => { load() }, [load])
 
+  // A project can only be Closed once every assigned member has feedback — EXCEPT
+  // Managers and above, whose feedback is not required to close a project.
+  const missingFeedback = useMemo(
+    () => members.filter((m) => roleRank(m.role) < RANK_MANAGER && !feedback.some((f) => String(f.member_id) === String(m.id))),
+    [members, feedback]
+  )
+
   const handleSave = async () => {
+    if (overall === 'Closed' && missingFeedback.length > 0) {
+      onToast(`Can't close: feedback missing for ${missingFeedback.map((m) => m.name).join(', ')}`, 'error')
+      return
+    }
     await window.api.items.create('status', { project_id: projectId, overall, notes })
     onToast('Status saved')
     setDirty(false)
@@ -82,19 +103,28 @@ export default function StatusTab({ projectId, onToast }: Props) {
         )}
         <div className="field" style={{ marginBottom: 16 }}>
           <label>Overall Stage</label>
-          <select value={overall} onChange={(e) => { setOverall(e.target.value); setDirty(true) }}>
+          <select value={overall} onChange={(e) => { setOverall(e.target.value); setDirty(true) }} disabled={!isLead}>
             {STATUS_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
           </select>
         </div>
         <div className="field" style={{ marginBottom: 16 }}>
           <label>Notes</label>
-          <textarea value={notes} onChange={(e) => { setNotes(e.target.value); setDirty(true) }} rows={4} />
+          <textarea value={notes} onChange={(e) => { setNotes(e.target.value); setDirty(true) }} rows={4} disabled={!isLead} />
         </div>
-        <div className="actions">
-          <button className="btn btn-primary" onClick={handleSave} disabled={!dirty} style={{ opacity: dirty ? 1 : 0.5 }}>
-            Save Status
-          </button>
-        </div>
+        {overall === 'Closed' && missingFeedback.length > 0 && (
+          <p className="attach-hint" style={{ color: 'var(--danger)' }}>
+            ⚠ Feedback is required before closing for every member below Manager. Missing for: <strong>{missingFeedback.map((m) => m.name).join(', ')}</strong>.
+          </p>
+        )}
+        {isLead ? (
+          <div className="actions">
+            <button className="btn btn-primary" onClick={handleSave} disabled={!dirty || (overall === 'Closed' && missingFeedback.length > 0)} style={{ opacity: (dirty && !(overall === 'Closed' && missingFeedback.length > 0)) ? 1 : 0.5 }}>
+              Save Status
+            </button>
+          </div>
+        ) : (
+          <p className="attach-hint">Only Team Leads and Managers can change the project status.</p>
+        )}
       </div>
     </div>
   )

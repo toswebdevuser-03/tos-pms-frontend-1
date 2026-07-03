@@ -11,7 +11,8 @@ export type IconName =
   | 'checkSquare' | 'checkCircle' | 'target' | 'sparkles' | 'grid' | 'folder' | 'folderIn'
   | 'barChart' | 'pin' | 'brain' | 'clipboard' | 'play' | 'pause' | 'hourglass' | 'send'
   | 'help' | 'ruler' | 'wrench' | 'building' | 'hardHat' | 'cog' | 'road' | 'sofa' | 'tree' | 'map'
-  | 'file' | 'bellRing' | 'party' | 'trendingUp'
+  | 'file' | 'bellRing' | 'party' | 'trendingUp' | 'home' | 'quote' | 'chevronDown' | 'externalLink' | 'sort'
+  | 'chevronLeft' | 'chevronRight' | 'alertTriangle'
 
 const P: Record<IconName, React.ReactNode> = {
   menu: <><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" /></>,
@@ -65,7 +66,15 @@ const P: Record<IconName, React.ReactNode> = {
   file: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><polyline points="14 3 14 8 19 8" /></>,
   bellRing: <><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.7 21a2 2 0 0 1-3.4 0" /><path d="M3.5 6a6 6 0 0 1 2-3M20.5 6a6 6 0 0 0-2-3" /></>,
   party: <><path d="M4 20l5-13 8 8z" /><path d="M14 6c1-1 3-1 4 0M16 3c0 1 0 2 1 3M20 9c-1 0-2 0-3 1" /></>,
-  trendingUp: <><polyline points="3 17 9 11 13 15 21 7" /><polyline points="15 7 21 7 21 13" /></>
+  trendingUp: <><polyline points="3 17 9 11 13 15 21 7" /><polyline points="15 7 21 7 21 13" /></>,
+  home: <><path d="M3 11l9-8 9 8" /><path d="M5 10v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V10" /><path d="M9 21v-6h6v6" /></>,
+  chevronDown: <polyline points="6 9 12 15 18 9" />,
+  externalLink: <><path d="M14 3h7v7" /><path d="M10 14 21 3" /><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5" /></>,
+  quote: <><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M12 7.5v9" /><path d="M14.4 9.3c-.5-.7-1.4-1.1-2.4-1.1-1.4 0-2.4.8-2.4 1.9 0 1.2 1 1.6 2.4 1.9s2.4.7 2.4 1.9c0 1.1-1 1.9-2.4 1.9-1 0-1.9-.4-2.4-1.1" /></>,
+  sort: <><path d="M8 4v16" /><polyline points="4 8 8 4 12 8" /><path d="M16 20V4" /><polyline points="12 16 16 20 20 16" /></>,
+  chevronLeft: <polyline points="15 18 9 12 15 6" />,
+  chevronRight: <polyline points="9 18 15 12 9 6" />,
+  alertTriangle: <><path d="M12 3.5 2 20.5h20z" /><line x1="12" y1="9.5" x2="12" y2="14" /><line x1="12" y1="17.2" x2="12" y2="17.2" /></>
 }
 
 interface Props {

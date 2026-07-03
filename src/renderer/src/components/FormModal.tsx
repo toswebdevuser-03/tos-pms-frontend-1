@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import AttachmentManager from './AttachmentManager'
 import Icon from './Icon'
+import { useEscapeKey } from '../lib/useEscapeKey'
 
 export interface FieldDef {
   key: string
   label: string
-  type?: 'text' | 'date' | 'select' | 'textarea' | 'number' | 'path'
+  type?: 'text' | 'date' | 'select' | 'textarea' | 'number' | 'path' | 'multiselect'
   options?: string[]
   required?: boolean
   adminOnly?: boolean
@@ -29,17 +30,13 @@ export default function FormModal({
   const [values, setValues] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {}
     fields.forEach((f) => {
-      const def = f.optionValues ? f.optionValues[0].value : f.options ? f.options[0] : ''
+      const def = f.type === 'multiselect' ? '' : f.optionValues ? f.optionValues[0].value : f.options ? f.options[0] : ''
       init[f.key] = initial ? String(initial[f.key] ?? def) : def
     })
     return init
   })
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  useEscapeKey(onClose)
 
   const set = (key: string, val: string) => setValues((v) => ({ ...v, [key]: val }))
 
@@ -49,7 +46,7 @@ export default function FormModal({
   }
 
   return (
-    <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal">
         <div className="modal-header">
           <h3>{title}</h3>
@@ -71,17 +68,18 @@ export default function FormModal({
                         type="text"
                         value={values[f.key]}
                         onChange={(e) => set(f.key, e.target.value)}
-                        placeholder="Type a path or browse…"
+                        placeholder="Paste the full path, e.g. \\server\share\Project"
                         disabled={disabled}
                       />
                       <button
-                        type="button" className="btn btn-secondary btn-sm" disabled={disabled}
-                        onClick={async () => { const r = await window.api.paths.pick('file'); if (r.ok && r.data?.path) set(f.key, r.data.path) }}
-                      ><Icon name="file" size={14} /> File</button>
-                      <button
-                        type="button" className="btn btn-secondary btn-sm" disabled={disabled}
-                        onClick={async () => { const r = await window.api.paths.pick('folder'); if (r.ok && r.data?.path) set(f.key, r.data.path) }}
-                      ><Icon name="folder" size={14} /> Folder</button>
+                        type="button" className="btn btn-secondary btn-sm"
+                        disabled={disabled || !values[f.key]}
+                        title="Copy this path to the clipboard"
+                        onClick={async () => {
+                          try { await navigator.clipboard.writeText(values[f.key]); onToast?.('Path copied') }
+                          catch { onToast?.('Could not copy', 'error') }
+                        }}
+                      ><Icon name="clipboard" size={14} /> Copy</button>
                     </div>
                   ) : f.type === 'select' ? (
                     <select value={values[f.key]} onChange={(e) => set(f.key, e.target.value)} disabled={disabled}>
@@ -89,6 +87,29 @@ export default function FormModal({
                         ? f.optionValues.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)
                         : f.options?.map((o) => <option key={o} value={o}>{o}</option>)}
                     </select>
+                  ) : f.type === 'multiselect' ? (
+                    <div className="multiselect">
+                      {(() => {
+                        // Support either plain string options or {label,value} pairs (stores values).
+                        const opts = f.optionValues ?? (f.options ?? []).map((o) => ({ label: o, value: o }))
+                        const allVals = opts.map((o) => o.value)
+                        const sel = values[f.key] ? values[f.key].split(',').map((s) => s.trim()).filter(Boolean) : []
+                        return opts.map((o) => (
+                          <label key={o.value} className="ms-option">
+                            <input
+                              type="checkbox"
+                              checked={sel.includes(o.value)}
+                              disabled={disabled}
+                              onChange={(e) => {
+                                const next = e.target.checked ? [...sel, o.value] : sel.filter((x) => x !== o.value)
+                                set(f.key, allVals.filter((x) => next.includes(x)).join(', '))
+                              }}
+                            />
+                            {o.label}
+                          </label>
+                        ))
+                      })()}
+                    </div>
                   ) : f.type === 'textarea' ? (
                     <textarea value={values[f.key]} onChange={(e) => set(f.key, e.target.value)} disabled={disabled} />
                   ) : (

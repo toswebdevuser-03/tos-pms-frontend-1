@@ -30,9 +30,9 @@ const parse = (v: unknown): Date | null => {
 const daysBetween = (a: Date, b: Date): number => Math.round((a.getTime() - b.getTime()) / 86400000)
 
 function normStage(s: string): 'On-going' | 'On-hold' | 'Completed' {
-  if (s === 'Completed') return 'Completed'
+  if (s === 'Completed' || s === 'Closed') return 'Completed' // 'Closed' is the new "done"
   if (s === 'On-hold' || s === 'On Hold') return 'On-hold'
-  return 'On-going'
+  return 'On-going' // includes 'Yet to start' & 'Dispatched' (still active)
 }
 
 /**

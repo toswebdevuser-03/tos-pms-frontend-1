@@ -14,17 +14,19 @@
 type Res<T> = Promise<{ ok: boolean; data?: T; error?: string }>
 type Row = Record<string, unknown>
 
+// Empty API_BASE = same-origin: the app calls /auth and /api on its own origin
+// and Vercel rewrites proxy those to the backend server-side (see vercel.json).
+// This avoids cross-origin CORS entirely (and the ngrok free-tier interstitial,
+// which strips CORS headers from fresh browsers' preflights).
 const API_BASE = (((import.meta as unknown as { env?: Record<string, string> }).env?.VITE_API_BASE_URL) || '').replace(/\/$/, '')
 const TOKEN_KEY = 'tos_token'
 
 const getToken = (): string => { try { return localStorage.getItem(TOKEN_KEY) || '' } catch { return '' } }
 const setToken = (t: string): void => { try { t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY) } catch { /* ignore */ } }
 const authHeader = (): Record<string, string> => { const t = getToken(); return t ? { Authorization: `Bearer ${t}` } : {} }
-const NO_BACKEND = 'Backend not configured yet (set VITE_API_BASE_URL and redeploy).'
 
 // Core request → returns the server's {ok,data,error} envelope (matches IPC).
 async function call<T>(method: string, path: string, body?: unknown): Res<T> {
-  if (!API_BASE) return { ok: false, error: NO_BACKEND }
   try {
     const res = await fetch(API_BASE + path, {
       method,
@@ -50,7 +52,6 @@ function download(filename: string, content: BlobPart, mime: string): void {
   document.body.appendChild(a); a.click(); a.remove()
   setTimeout(() => URL.revokeObjectURL(url), 4000)
 }
-const escHtml = (v: unknown): string => String(v ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] || c))
 function keysOf(rows: Row[]): string[] {
   const s = new Set<string>()
   rows.forEach((r) => Object.keys(r).forEach((k) => s.add(k)))
@@ -92,15 +93,14 @@ function pickFile(accept: string, multiple: boolean): Promise<File[]> {
 
 // ── Attachments (raw bytes via authed fetch) ──────────────────────────────
 async function rawBlob(storedPath: string): Promise<Blob | null> {
-  if (!API_BASE) return null
-  const res = await fetch(`${API_BASE}/api/attachments/raw?path=${q(storedPath)}`, { headers: authHeader() })
+  const res = await fetch(`${API_BASE}/api/attachments/raw?path=${q(storedPath)}`, { headers: { 'ngrok-skip-browser-warning': 'true', ...authHeader() } })
   if (!res.ok) return null
   return res.blob()
 }
 async function uploadOne(entityType: string, entityId: number, file: File): Promise<Row | null> {
   const form = new FormData()
   form.append('entityType', entityType); form.append('entityId', String(entityId)); form.append('file', file, file.name)
-  const res = await fetch(`${API_BASE}/api/attachments/upload`, { method: 'POST', headers: authHeader(), body: form })
+  const res = await fetch(`${API_BASE}/api/attachments/upload`, { method: 'POST', headers: { 'ngrok-skip-browser-warning': 'true', ...authHeader() }, body: form })
   const j = (await res.json().catch(() => null)) as { ok: boolean; data?: Row } | null
   return j?.ok ? (j.data ?? null) : null
 }
@@ -118,9 +118,9 @@ function severityFor(date: string): Sev | null {
   return null
 }
 async function buildReminders(): Promise<Row[]> {
-  const [wip, disp, task, proj, mem] = await Promise.all([
+  const [wip, disp, task, proj, mem, ts] = await Promise.all([
     call<Row[]>('GET', '/api/all/wip'), call<Row[]>('GET', '/api/all/dispatches'), call<Row[]>('GET', '/api/all/tasks'),
-    call<Row[]>('GET', '/api/projects'), call<Row[]>('GET', '/api/members')
+    call<Row[]>('GET', '/api/projects'), call<Row[]>('GET', '/api/members'), call<Row[]>('GET', '/api/all/timesheets')
   ])
   const pName = new Map<number, string>()
   ;(proj.data ?? []).forEach((p) => pName.set(Number(p.id), String(p.name ?? `Project ${p.id}`)))
@@ -139,9 +139,11 @@ async function buildReminders(): Promise<Row[]> {
     out.push({ key: `wip-${w.id}`, projectId: w.project_id, projectName: pName.get(Number(w.project_id)) ?? '', kind: 'wip', title: String(w.task_name || 'WIP item'), date, severity: sev, assignee: a.name || String(w.assigned_to || ''), assigneeEmail: a.email })
   }
   for (const d of disp.data ?? []) {
-    if (String(d.status) === 'Acknowledged') continue
+    if (String(d.status) === 'Acknowledged' || String(d.status) === 'Dispatched') continue
     const date = String(d.dispatch_date || ''); const sev = severityFor(date); if (!sev) continue
-    out.push({ key: `dispatch-${d.id}`, projectId: d.project_id, projectName: pName.get(Number(d.project_id)) ?? '', kind: 'dispatch', title: String(d.dispatch_number || 'Dispatch') + (d.description ? ` — ${d.description}` : ''), date, severity: sev, assignee: String(d.recipient || ''), assigneeEmail: '' })
+    const a = who(d.assigned_member_id)
+    const label = String(d.description || d.dispatch_number || 'Dispatch')
+    out.push({ key: `dispatch-${d.id}`, projectId: d.project_id, projectName: pName.get(Number(d.project_id)) ?? '', kind: 'dispatch', title: (d.dispatch_number ? `${d.dispatch_number} — ` : '') + label.slice(0, 80), date, severity: sev, assignee: a.name || String(d.recipient || ''), assigneeEmail: a.email })
   }
   for (const t of task.data ?? []) {
     if (String(t.status) === 'Done') continue
@@ -149,6 +151,30 @@ async function buildReminders(): Promise<Row[]> {
     const a = who(t.assigned_member_id)
     out.push({ key: `task-${t.id}`, projectId: t.project_id, projectName: pName.get(Number(t.project_id)) ?? '', kind: 'task', title: String(t.name || 'Task'), date, severity: sev, assignee: a.name, assigneeEmail: a.email })
   }
+  // Budget: warn when a project's logged productive hours reach 80% of quoted.
+  const numv = (v: unknown): number => { const n = parseFloat(String(v ?? '')); return isNaN(n) ? 0 : n }
+  const loggedByProject = new Map<number, number>()
+  ;(ts.data ?? []).forEach((r) => {
+    if (r.pending) return // pending manual entries don't count until approved
+    const pid = Number(r.project_id)
+    loggedByProject.set(pid, (loggedByProject.get(pid) ?? 0) + numv(r.execution_hrs) + numv(r.overtime_hrs))
+  })
+  ;(proj.data ?? []).forEach((p) => {
+    const quoted = numv(p.quoted_hours)
+    if (quoted <= 0) return
+    const logged = Math.round((loggedByProject.get(Number(p.id)) ?? 0) * 10) / 10
+    const pct = Math.round((logged / quoted) * 100)
+    if (pct < 80) return
+    out.push({
+      key: `budget-${p.id}`, projectId: p.id, projectName: String(p.name ?? `Project ${p.id}`),
+      kind: 'budget',
+      title: pct >= 100
+        ? `Over budget — ${logged} / ${quoted} hrs used (${pct}%)`
+        : `${pct}% of quoted hours used — ${logged} / ${quoted} hrs`,
+      date: '', severity: pct >= 100 ? 'overdue' : 'due', assignee: '', assigneeEmail: ''
+    })
+  })
+
   const rank: Record<Sev, number> = { overdue: 0, due: 1, upcoming: 2 }
   out.sort((a, b) => rank[a.severity as Sev] - rank[b.severity as Sev] || String(a.date).localeCompare(String(b.date)))
   return out
@@ -192,7 +218,10 @@ function buildApi(): unknown {
       create: (d: Row) => call('POST', '/api/projects', d),
       update: (d: Row) => call('PUT', `/api/projects/${q(d.id)}`, d),
       delete: (id: number) => call('DELETE', `/api/projects/${q(id)}`),
-      setArchived: (id: number, archived: boolean) => call('PUT', `/api/projects/${q(id)}/archived`, { archived })
+      setArchived: (id: number, archived: boolean) => call('PUT', `/api/projects/${q(id)}/archived`, { archived }),
+      deleted: () => call('GET', '/api/projects/deleted'),
+      restore: (id: number) => call('POST', `/api/projects/${q(id)}/restore`),
+      purge: (id: number) => call('DELETE', `/api/projects/${q(id)}/purge`)
     },
     items: {
       getByProject: (projectId: number, type: string) => call('GET', `/api/items/${q(type)}?projectId=${q(projectId)}`),
@@ -214,6 +243,31 @@ function buildApi(): unknown {
       assign: (projectId: number, memberId: number) => call('POST', '/api/project-members', { projectId, memberId }),
       unassign: (projectId: number, memberId: number) => call('DELETE', '/api/project-members', { projectId, memberId })
     },
+    overtime: {
+      list: () => call('GET', '/api/overtime'),
+      request: (d: Row) => call('POST', '/api/overtime', d),
+      decide: (id: number, decision: 'approve' | 'reject') => call('PUT', `/api/overtime/${q(id)}/decide`, { decision })
+    },
+    all: {
+      tasks: () => call('GET', '/api/all/tasks'),
+      timesheets: () => call('GET', '/api/all/timesheets'),
+      wip: () => call('GET', '/api/all/wip'),
+      dispatches: () => call('GET', '/api/all/dispatches'),
+      qc: () => call('GET', '/api/all/qc'),
+      rfi: () => call('GET', '/api/all/rfi')
+    },
+    quotes: {
+      list: () => call('GET', '/api/quotes'),
+      create: (d: Row) => call('POST', '/api/quotes', d),
+      update: (id: number, d: Row) => call('PUT', `/api/quotes/${q(id)}`, d),
+      delete: (id: number) => call('DELETE', `/api/quotes/${q(id)}`)
+    },
+    clients: {
+      list: () => call('GET', '/api/clients'),
+      create: (d: Row) => call('POST', '/api/clients', d),
+      update: (id: number, d: Row) => call('PUT', `/api/clients/${q(id)}`, d),
+      delete: (id: number) => call('DELETE', `/api/clients/${q(id)}`)
+    },
     settings: {
       get: () => call('GET', '/api/settings'),
       update: (patch: Row) => call('PUT', '/api/settings', patch)
@@ -222,7 +276,6 @@ function buildApi(): unknown {
       get: (entityType: string, entityId: number) => call('GET', `/api/attachments?entityType=${q(entityType)}&entityId=${q(entityId)}`),
       getMany: (entityType: string, ids: number[]) => call('GET', `/api/attachments/many?entityType=${q(entityType)}&ids=${q(ids.join(','))}`),
       add: async (entityType: string, entityId: number, multi = true) => {
-        if (!API_BASE) return { ok: false, error: NO_BACKEND }
         const files = await pickFile('*/*', multi)
         if (!files.length) return { ok: true, data: [] }
         const out: Row[] = []
@@ -246,8 +299,8 @@ function buildApi(): unknown {
       delete: (id: number) => call('DELETE', `/api/attachments/${q(id)}`)
     },
     email: {
-      test: async () => ({ ok: false, error: 'Email is sent by the backend — configure SMTP server-side once the backend is live.' }),
-      send: async () => ({ ok: false, error: 'Email is sent by the backend — not available until the backend is configured.' })
+      test: () => call('POST', '/api/email/test'),
+      send: (msg: { to: string; subject: string; html: string }) => call('POST', '/api/email/send', msg)
     },
     reminders: {
       get: async () => { try { return { ok: true, data: await buildReminders() } } catch (e) { return { ok: false, error: String(e) } } },
@@ -291,11 +344,89 @@ function buildApi(): unknown {
       }
     },
     excel: {
-      export: async (type: string, projectName: string, rows: Row[]) => {
-        const keys = keysOf(rows)
-        const html = `<html><head><meta charset="utf-8"></head><body><table border="1"><thead><tr>${keys.map((k) => `<th>${escHtml(k)}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${keys.map((k) => `<td>${escHtml(r[k])}</td>`).join('')}</tr>`).join('')}</tbody></table></body></html>`
-        download(`${type}_${projectName}.xls`, '﻿' + html, 'application/vnd.ms-excel')
-        return { ok: true, data: { filePath: `${type}_${projectName}.xls` } }
+      export: async (type: string, projectName: string, rows: Row[], fileName?: string) => {
+        // exceljs is CJS; grab whichever interop shape Vite produces.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const mod: any = await import('exceljs')
+        const ExcelJS = mod.default ?? mod
+        const wb = new ExcelJS.Workbook()
+        const ws = wb.addWorksheet('Data')
+        const fileBase = (fileName || (type === 'rfi' || type === 'query' ? `${projectName}_RFI-Query` : `${type}_${projectName}`)).replace(/[^a-z0-9_-]+/gi, '_')
+
+        if (type === 'rfi' || type === 'query') {
+          // One row per point (new multi-point shape) or per legacy attachment.
+          // Columns: S. No. · Points · Image · Response (only these, per request).
+          ws.columns = [
+            { header: 'S. No.', key: 'sno', width: 7 },
+            { header: 'Points', key: 'point', width: 52 },
+            { header: 'Image', key: 'image', width: 26 },
+            { header: 'Response', key: 'response', width: 44 }
+          ]
+          // Embed a base64 data-URL image into the 'Image' column (index 2) of a row.
+          const embedDataUrl = (dataUrl: string, rowNumber: number): boolean => {
+            const m = dataUrl.match(/^data:image\/(png|jpe?g|gif);base64,(.+)$/i)
+            if (!m) return false
+            const ex = /jpe?g/i.test(m[1]) ? 'jpeg' : /gif/i.test(m[1]) ? 'gif' : 'png'
+            const imgId = wb.addImage({ base64: m[2], extension: ex as 'png' | 'jpeg' | 'gif' })
+            ws.addImage(imgId, { tl: { col: 2, row: rowNumber - 1 }, ext: { width: 150, height: 100 }, editAs: 'oneCell' })
+            return true
+          }
+          // Legacy attachment images (entries with no points).
+          const legacyIds = rows.filter((r) => !Array.isArray(r.points)).map((r) => Number(r.id)).filter(Boolean)
+          const attRes = legacyIds.length
+            ? await call<Row[]>('GET', `/api/attachments/many?entityType=${q(type)}&ids=${q(legacyIds.join(','))}`)
+            : { ok: true, data: [] as Row[] }
+          const atts = (attRes.ok ? attRes.data ?? [] : []) as Array<Record<string, unknown>>
+          const byEntity = new Map<number, Array<Record<string, unknown>>>()
+          atts.forEach((a) => { const k = Number(a.entity_id); (byEntity.get(k) ?? byEntity.set(k, []).get(k)!).push(a) })
+
+          let sno = 1
+          for (const row of rows) {
+            if (Array.isArray(row.points)) {
+              const pts = row.points as Array<Record<string, unknown>>
+              if (!pts.length) { ws.addRow({ sno: sno++, point: '', image: '', response: '' }); continue }
+              for (const p of pts) {
+                const xr = ws.addRow({ sno: sno++, point: String(p.text ?? ''), image: '', response: String(p.response ?? '') })
+                if (p.image && embedDataUrl(String(p.image), xr.number)) xr.height = 78
+              }
+            } else {
+              const list = byEntity.get(Number(row.id)) ?? []
+              if (!list.length) { ws.addRow({ sno: sno++, point: String(row.subject ?? row.description ?? ''), image: '', response: String(row.response ?? '') }); continue }
+              for (const a of list) {
+                const xr = ws.addRow({ sno: sno++, point: String(row.subject ?? a.description ?? ''), image: '', response: String(a.response ?? '') })
+                const ext = String(a.filename ?? '').split('.').pop()?.toLowerCase()
+                const exExt = ext === 'jpg' || ext === 'jpeg' ? 'jpeg' : ext === 'png' ? 'png' : ext === 'gif' ? 'gif' : ''
+                const blob = exExt ? await rawBlob(String(a.stored_path)) : null
+                if (blob && exExt) {
+                  const buffer = await blob.arrayBuffer()
+                  const imgId = wb.addImage({ buffer, extension: exExt as 'png' | 'jpeg' | 'gif' })
+                  ws.addImage(imgId, { tl: { col: 2, row: xr.number - 1 }, ext: { width: 150, height: 100 }, editAs: 'oneCell' })
+                  xr.height = 78
+                } else {
+                  xr.getCell('image').value = String(a.filename ?? '')
+                }
+              }
+            }
+          }
+        } else {
+          // Generic: one column per field.
+          const keys = keysOf(rows)
+          ws.columns = keys.map((k) => ({ header: k, key: k, width: Math.min(40, Math.max(12, k.length + 4)) }))
+          rows.forEach((r) => ws.addRow(r))
+        }
+
+        // Bold, highlighted, frozen header row; wrap body cells.
+        ws.eachRow({ includeEmpty: false }, (r) => r.eachCell((c) => { c.alignment = { wrapText: true, vertical: 'top' } }))
+        const head = ws.getRow(1)
+        head.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+        head.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F2937' } }
+        head.alignment = { vertical: 'middle' }
+        head.height = 20
+        ws.views = [{ state: 'frozen', ySplit: 1 }]
+
+        const buf = await wb.xlsx.writeBuffer()
+        download(`${fileBase}.xlsx`, buf, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        return { ok: true, data: { filePath: `${fileBase}.xlsx` } }
       }
     },
     paths: {
@@ -310,7 +441,8 @@ function buildApi(): unknown {
       state: async () => {
         if (!getToken()) return { ok: true, data: { mode: 'remote', user: null } }
         const me = await call<{ user: unknown }>('GET', '/auth/me')
-        if (!me.ok || !me.data) { setToken(''); return { ok: true, data: { mode: 'remote', user: null } } }
+        // call() already clears token on 401; don't wipe a valid token for transient network errors
+        if (!me.ok || !me.data) { return { ok: true, data: { mode: 'remote', user: null } } }
         return { ok: true, data: { mode: 'remote', user: me.data.user } }
       },
       login: async (email: string, password: string) => {

@@ -7,9 +7,21 @@ import Icon, { IconName } from '../components/Icon'
 import SimilarProjects from '../components/SimilarProjects'
 import { DashboardSkeleton } from '../components/Skeleton'
 import { Member, Project } from '../types'
+import { useApp } from '../context/AppContext'
 import { assessRisk } from '../risk'
-import { buildBurnUp, forecast, productiveOf, VERDICT_LABEL, VERDICT_COLOR, relativeDate } from '../forecast'
+import { buildBurnUp, forecast, VERDICT_LABEL, VERDICT_COLOR, relativeDate } from '../forecast'
 import { buildProjectReportHtml } from '../report'
+import { num, productiveHours as productiveOfRow } from '../lib/hours'
+import { useEscapeKey } from '../lib/useEscapeKey'
+
+type DashWidgetKey = 'kpis' | 'forecast' | 'charts'
+const DASH_WIDGET_LABELS: Record<DashWidgetKey, string> = { kpis: 'KPI cards', forecast: 'Budget burn-up & forecast', charts: 'Charts' }
+const DASH_WIDGET_KEYS = Object.keys(DASH_WIDGET_LABELS) as DashWidgetKey[]
+const DASH_WIDGETS_LS_KEY = 'tos_projdash_widgets'
+function loadDashWidgetPrefs(): Record<DashWidgetKey, boolean> {
+  const all: Record<DashWidgetKey, boolean> = { kpis: true, forecast: true, charts: true }
+  try { return { ...all, ...JSON.parse(localStorage.getItem(DASH_WIDGETS_LS_KEY) || '{}') } } catch { return all }
+}
 
 interface Props {
   projectId: number
@@ -22,7 +34,6 @@ interface Props {
 }
 
 type Row = Record<string, unknown>
-const num = (v: unknown): number => { const n = parseFloat(String(v ?? '')); return isNaN(n) ? 0 : n }
 const COLORS = { blue: '#3b82f6', green: '#22c55e', amber: '#f59e0b', red: '#ef4444', purple: '#a78bfa', slate: '#94a3b8' }
 
 function StatCard({ icon, label, value, sub, accent, onClick }: { icon: IconName; label: string; value: string | number; sub?: string; accent: string; onClick?: () => void }) {
@@ -40,9 +51,18 @@ function StatCard({ icon, label, value, sub, accent, onClick }: { icon: IconName
 }
 
 export default function DashboardTab({ projectId, projectName, onToast, quotedHours = 0, onNavigate, project, overall }: Props) {
+  const { isAdmin } = useApp() // Project Lead+ may see quoted/budget; Employees see only logged (exhausted) hrs
   const [data, setData] = useState<Record<string, Row[]>>({})
   const [members, setMembers] = useState<Member[]>([])
   const [loading, setLoading] = useState(true)
+  const [widgets, setWidgets] = useState<Record<DashWidgetKey, boolean>>(loadDashWidgetPrefs)
+  const [customizeOpen, setCustomizeOpen] = useState(false)
+  useEscapeKey(() => setCustomizeOpen(false))
+  const toggleWidget = (k: DashWidgetKey): void => setWidgets((w) => {
+    const next = { ...w, [k]: !w[k] }
+    localStorage.setItem(DASH_WIDGETS_LS_KEY, JSON.stringify(next))
+    return next
+  })
 
   const load = useCallback(async () => {
     const types = ['rfi', 'query', 'dispatch', 'wip', 'qc', 'task', 'timesheet', 'standard', 'scope', 'input']
@@ -60,7 +80,8 @@ export default function DashboardTab({ projectId, projectName, onToast, quotedHo
   useEffect(() => { setLoading(true); load() }, [load])
 
   const rfi = data.rfi ?? [], query = data.query ?? [], dispatch = data.dispatch ?? []
-  const wip = data.wip ?? [], qc = data.qc ?? [], task = data.task ?? [], ts = data.timesheet ?? []
+  // Pending manual timesheet entries don't count until a Team Lead approves them.
+  const wip = data.wip ?? [], qc = data.qc ?? [], task = data.task ?? [], ts = (data.timesheet ?? []).filter((t: Record<string, unknown>) => !t.pending)
   const standard = data.standard ?? [], scope = data.scope ?? [], input = data.input ?? []
   const go = (tab: string) => onNavigate ? (() => onNavigate(tab)) : undefined
 
@@ -86,7 +107,7 @@ export default function DashboardTab({ projectId, projectName, onToast, quotedHo
   const totalHours = ts.reduce((s, t) => s + num(t.total_hrs), 0)
   // Budget is measured in PRODUCTIVE hours (execution + overtime), matching the
   // Timesheet tab's rule and the forecast/risk engines.
-  const productiveHours = Math.round(ts.reduce((s, t) => s + productiveOf(t), 0) * 10) / 10
+  const productiveHours = Math.round(ts.reduce((s, t) => s + productiveOfRow(t), 0) * 10) / 10
   const productivePct = quotedHours ? Math.round((productiveHours / quotedHours) * 100) : 0
 
   // Forward-looking budget analytics (productive hrs vs quote — see forecast.ts).
@@ -100,18 +121,22 @@ export default function DashboardTab({ projectId, projectName, onToast, quotedHo
     color: COLORS.blue
   })).filter((b) => b.value > 0)
 
-  // RFI / Query status bars
+  // RFI / Query status bars (combined)
+  const rq = [...rfi, ...query]
   const rfiBars = [
-    { label: 'Open', value: count(rfi, 'status', 'Open'), color: COLORS.blue },
-    { label: 'Pending', value: count(rfi, 'status', 'Pending'), color: COLORS.amber },
-    { label: 'Closed', value: count(rfi, 'status', 'Closed'), color: COLORS.green }
-  ]
-  const queryBars = [
-    { label: 'Open', value: count(query, 'status', 'Open'), color: COLORS.blue },
-    { label: 'Pending', value: count(query, 'status', 'Pending'), color: COLORS.amber },
-    { label: 'Resolved', value: count(query, 'status', 'Resolved'), color: COLORS.green }
+    { label: 'Open', value: count(rq, 'status', 'Open'), color: COLORS.blue },
+    { label: 'Pending', value: count(rq, 'status', 'Pending'), color: COLORS.amber },
+    { label: 'Closed', value: count(rq, 'status', 'Closed'), color: COLORS.green },
+    { label: 'Resolved', value: count(rq, 'status', 'Resolved'), color: COLORS.purple }
   ]
   const qcPass = count(qc, 'result', 'Pass'), qcFail = count(qc, 'result', 'Fail'), qcPend = count(qc, 'result', 'Pending')
+
+  // Dispatch status breakdown (the card caption must reflect real statuses, not a fixed "sent").
+  const dispSent = count(dispatch, 'status', 'Sent')
+  const dispAck = count(dispatch, 'status', 'Acknowledged')
+  const dispDraft = count(dispatch, 'status', 'Draft')
+  const dispSub = dispatch.length === 0 ? 'none yet'
+    : [dispDraft ? `${dispDraft} draft` : '', dispSent ? `${dispSent} sent` : '', dispAck ? `${dispAck} ack'd` : ''].filter(Boolean).join(' · ')
 
   const exportPowerBI = async () => {
     const res = await window.api.powerbi.export()
@@ -147,6 +172,23 @@ export default function DashboardTab({ projectId, projectName, onToast, quotedHo
       <div className="tab-toolbar">
         <div className="tab-toolbar-left"><span className="toolbar-progress">Overview · {projectName}</span></div>
         <div className="tab-toolbar-right">
+          <div className="widget-picker-wrap">
+            <button className="btn btn-secondary btn-sm" onClick={() => setCustomizeOpen((v) => !v)}><Icon name="grid" size={15} /> Customize</button>
+            {customizeOpen && (
+              <>
+                <div className="widget-picker-backdrop" onClick={() => setCustomizeOpen(false)} />
+                <div className="widget-picker" role="dialog" aria-label="Customize dashboard">
+                  <div className="widget-picker-head">Show on this dashboard</div>
+                  {DASH_WIDGET_KEYS.map((wk) => (
+                    <label key={wk} className="widget-picker-row">
+                      <input type="checkbox" checked={widgets[wk]} onChange={() => toggleWidget(wk)} />
+                      {DASH_WIDGET_LABELS[wk]}
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
           <button className="btn btn-secondary btn-sm" onClick={statusPdf}><Icon name="file" size={15} /> Status PDF</button>
           <button className="btn btn-secondary btn-sm" onClick={exportPowerBI}><Icon name="download" size={15} /> Export for Power BI</button>
           <button className="btn btn-secondary btn-sm" onClick={load}><Icon name="refresh" size={15} /> Refresh</button>
@@ -155,21 +197,24 @@ export default function DashboardTab({ projectId, projectName, onToast, quotedHo
 
       {loading ? <DashboardSkeleton /> : (
       <div className="dashboard">
+        {widgets.kpis && (
         <div className="kpi-grid">
           <StatCard icon="folder" label="Scope" value={scope.length} sub="items" accent={COLORS.blue} onClick={go('Scope')} />
           <StatCard icon="download" label="Input" value={input.length} sub="received" accent={COLORS.purple} onClick={go('Input')} />
-          <StatCard icon="send" label="RFIs" value={rfi.length} sub={`${count(rfi, 'status', 'Open')} open`} accent={COLORS.blue} onClick={go('RFI')} />
-          <StatCard icon="help" label="Queries" value={query.length} sub={`${count(query, 'status', 'Open')} open`} accent={COLORS.purple} onClick={go('Queries')} />
-          <StatCard icon="upload" label="Dispatches" value={dispatch.length} sub="sent" accent={COLORS.green} onClick={go('Dispatch')} />
+          <StatCard icon="send" label="RFIs/Queries" value={rfi.length + query.length} sub={`${count(rfi, 'status', 'Open') + count(query, 'status', 'Open')} open`} accent={COLORS.blue} onClick={go('RFI/Queries')} />
+          <StatCard icon="upload" label="Dispatches" value={dispatch.length} sub={dispSub} accent={COLORS.green} onClick={go('Dispatch')} />
           <StatCard icon="clipboard" label="WIP Items" value={wip.length} sub={`${count(wip, 'status', 'Achieved')} achieved`} accent={COLORS.amber} onClick={go('WIP')} />
           <StatCard icon="checkSquare" label="Tasks" value={`${taskDone}/${task.length}`} sub={`${pct}% complete`} accent={COLORS.blue} onClick={go('Tasks')} />
-          <StatCard icon="checkCircle" label="QC" value={qc.length} sub={`${qcPass} pass · ${qcFail} fail`} accent={qcFail ? COLORS.red : COLORS.green} onClick={go('QC')} />
-          <StatCard icon="clock" label="Productive Hrs" value={productiveHours} sub={quotedHours ? `of ${quotedHours} quoted · ${productivePct}%` : `${Math.round(totalHours * 10) / 10} total logged`} accent={COLORS.slate} onClick={go('Timesheet')} />
-          <StatCard icon="hourglass" label="Remaining Hrs" value={quotedHours ? Math.round((quotedHours - productiveHours) * 10) / 10 : '—'} sub={quotedHours ? `${productivePct}% used (productive)` : 'set quoted hrs'} accent={quotedHours && productiveHours > quotedHours ? COLORS.red : COLORS.green} onClick={go('Timesheet')} />
+          <StatCard icon="checkCircle" label="QA/QC" value={qc.length} sub={`${qcPass} pass · ${qcFail} fail`} accent={qcFail ? COLORS.red : COLORS.green} onClick={go('QC')} />
+          <StatCard icon="clock" label={isAdmin ? 'Productive Hrs' : 'Hrs Used'} value={productiveHours} sub={isAdmin && quotedHours ? `of ${quotedHours} quoted · ${productivePct}%` : `${Math.round(totalHours * 10) / 10} total logged`} accent={COLORS.slate} onClick={go('Timesheet')} />
+          {isAdmin && (
+            <StatCard icon="hourglass" label="Remaining Hrs" value={quotedHours ? Math.round((quotedHours - productiveHours) * 10) / 10 : '—'} sub={quotedHours ? `${productivePct}% used (productive)` : 'set quoted hrs'} accent={quotedHours && productiveHours > quotedHours ? COLORS.red : COLORS.green} onClick={go('Timesheet')} />
+          )}
           <StatCard icon="ruler" label="Standards" value={standard.length} sub="documented" accent={COLORS.purple} onClick={go('Standards')} />
         </div>
+        )}
 
-        {burn.points.length > 0 && (
+        {widgets.forecast && isAdmin && burn.points.length > 0 && (
           <div className="forecast-card">
             <div className="forecast-head">
               <h4><Icon name="trendingUp" size={16} /> Budget Burn-up &amp; Forecast</h4>
@@ -219,6 +264,7 @@ export default function DashboardTab({ projectId, projectName, onToast, quotedHo
           </div>
         )}
 
+        {widgets.charts && (
         <div className="chart-grid">
           <div className="chart-card">
             <h4>Task Completion</h4>
@@ -251,17 +297,12 @@ export default function DashboardTab({ projectId, projectName, onToast, quotedHo
           </div>
 
           <div className="chart-card">
-            <h4>RFI Status</h4>
+            <h4>RFI / Query Status</h4>
             <Bars data={rfiBars} />
           </div>
 
           <div className="chart-card">
-            <h4>Query Status</h4>
-            <Bars data={queryBars} />
-          </div>
-
-          <div className="chart-card">
-            <h4>QC Results</h4>
+            <h4>QA/QC Results</h4>
             <Bars data={[
               { label: 'Pass', value: qcPass, color: COLORS.green },
               { label: 'Fail', value: qcFail, color: COLORS.red },
@@ -271,6 +312,7 @@ export default function DashboardTab({ projectId, projectName, onToast, quotedHo
 
           <SimilarProjects projectId={projectId} />
         </div>
+        )}
       </div>
       )}
     </div>

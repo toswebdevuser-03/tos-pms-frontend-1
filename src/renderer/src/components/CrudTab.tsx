@@ -1,9 +1,11 @@
-import { useState, useEffect, useCallback, ReactNode } from 'react'
+import { useState, useEffect, useCallback, useMemo, ReactNode } from 'react'
 import DataTable, { Column } from './DataTable'
 import FormModal, { FieldDef } from './FormModal'
+import ConfirmDialog from './ConfirmDialog'
 import Icon from './Icon'
 import { useApp } from '../context/AppContext'
 import { ToastFn } from '../types'
+import { useFilters, FilterConfig, SelectFilter } from './FilterBar'
 
 interface Props {
   type: string
@@ -14,6 +16,7 @@ interface Props {
   fields: FieldDef[]
   attachments?: boolean
   adminOnlyAdd?: boolean
+  addAllowed?: boolean // explicit override for who may Add (e.g. Team Lead+); takes precedence over adminOnlyAdd
   emptyHint?: string
   computeExtra?: (values: Record<string, string>) => Record<string, unknown>
   onToast: ToastFn
@@ -29,16 +32,20 @@ interface Props {
 
 export default function CrudTab({
   type, singular, projectId, projectName, columns, fields, attachments,
-  adminOnlyAdd, emptyHint, computeExtra, onToast, onData, toolbarExtra, headerExtra, rowFilter,
+  adminOnlyAdd, addAllowed, emptyHint, computeExtra, onToast, onData, toolbarExtra, headerExtra, rowFilter,
   canEditRow, canDeleteRow, editLabel, reloadSignal
 }: Props) {
   const { isAdmin } = useApp()
   const [rows, setRows] = useState<Record<string, unknown>[]>([])
   const [modal, setModal] = useState<{ mode: 'add' | 'edit'; row?: Record<string, unknown> } | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<Record<string, unknown> | null>(null)
+  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const toggleSelect = (id: number): void => setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const toggleAll = (ids: number[], select: boolean): void => setSelected((s) => { const n = new Set(s); ids.forEach((id) => (select ? n.add(id) : n.delete(id))); return n })
 
   const load = useCallback(async () => {
     const res = await window.api.items.getByProject(projectId, type)
-    if (res.ok) { setRows(res.data as Record<string, unknown>[]); onData?.(res.data as Record<string, unknown>[]) }
+    if (res.ok) { setRows(res.data as Record<string, unknown>[]); onData?.(res.data as Record<string, unknown>[]); setSelected(new Set()) }
   }, [projectId, type, onData])
 
   useEffect(() => { load() }, [load, reloadSignal])
@@ -57,7 +64,6 @@ export default function CrudTab({
   }
 
   const handleDelete = async (row: Record<string, unknown>) => {
-    if (!confirm(`Delete this ${singular.toLowerCase()}?`)) return
     await window.api.items.delete(type, row.id as number)
     // Capture the row (minus server-managed fields) so the delete can be undone.
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -73,16 +79,41 @@ export default function CrudTab({
     load()
   }
 
-  const handleExport = async () => {
-    if (!rows.length) { onToast('No data to export', 'error'); return }
-    const res = await window.api.excel.export(type, projectName, rows)
-    if (res.ok && res.data?.filePath) onToast(`Exported to ${res.data.filePath}`)
+  const handleExport = async (selectedOnly = false) => {
+    const data = selectedOnly ? rows.filter((r) => selected.has(r.id as number)) : rows
+    if (!data.length) { onToast(selectedOnly ? 'Select some rows first' : 'No data to export', 'error'); return }
+    const res = await window.api.excel.export(type, projectName, data)
+    if (res.ok && res.data?.filePath) onToast(`Exported ${data.length} row(s) to ${res.data.filePath}`)
     else if (res.ok) onToast('Export cancelled')
     else onToast(res.error ?? 'Export failed', 'error')
   }
 
-  const canAdd = !adminOnlyAdd || isAdmin
-  const displayRows = rowFilter ? rows.filter(rowFilter) : rows
+  const canAdd = addAllowed ?? (!adminOnlyAdd || isAdmin)
+
+  // Derive filters from the tab's own definitions: a dropdown for every select
+  // field, a from/to range over the first date field, and free-text over columns.
+  const filterConfig = useMemo<FilterConfig>(() => {
+    const selects: SelectFilter[] = fields
+      .filter((f) => f.type === 'select')
+      .map((f) => ({
+        key: f.key,
+        label: f.label.replace(/\s*\(.*\)\s*$/, ''),
+        options: f.optionValues ? f.optionValues.map((o) => o.value).filter(Boolean) : f.options
+      }))
+    const dateField = fields.find((f) => f.type === 'date')
+    return {
+      searchKeys: columns.map((c) => c.key),
+      selects,
+      dateKey: dateField?.key,
+      dateLabel: dateField?.label,
+      // Offer every visible column as a sort field (uses the column's own label).
+      sorts: columns.map((c) => ({ key: c.key, label: c.label })),
+      searchPlaceholder: `Search ${singular.toLowerCase()}…`
+    }
+  }, [fields, columns, singular])
+
+  const baseRows = rowFilter ? rows.filter(rowFilter) : rows
+  const { filtered: displayRows, bar, sortKey, sortDir, onHeaderSort } = useFilters(baseRows, filterConfig)
 
   return (
     <div className="tab-content">
@@ -94,19 +125,28 @@ export default function CrudTab({
           {toolbarExtra}
         </div>
         <div className="tab-toolbar-right">
-          <button className="btn btn-secondary btn-sm" onClick={handleExport}><Icon name="download" size={15} /> Export Excel</button>
+          {selected.size > 0 && <button className="btn btn-secondary btn-sm" onClick={() => handleExport(true)}><Icon name="download" size={15} /> Export selected ({selected.size})</button>}
+          <button className="btn btn-secondary btn-sm" onClick={() => handleExport(false)}><Icon name="download" size={15} /> Export all</button>
         </div>
       </div>
       {headerExtra}
+      {bar}
       <DataTable
         columns={columns}
         rows={displayRows}
         emptyHint={emptyHint}
         onEdit={(r) => setModal({ mode: 'edit', row: r })}
-        onDelete={handleDelete}
+        onDelete={(r) => setConfirmDelete(r)}
         canEdit={canEditRow}
         canDelete={canDeleteRow}
         editLabel={editLabel}
+        selectable
+        selectedIds={selected}
+        onToggleSelect={toggleSelect}
+        onToggleAll={toggleAll}
+        sortKey={sortKey}
+        sortDir={sortDir}
+        onHeaderSort={onHeaderSort}
       />
       {modal && (
         <FormModal
@@ -118,6 +158,14 @@ export default function CrudTab({
           onSubmit={handleSubmit}
           onClose={() => { setModal(null); load() }}
           onToast={onToast}
+        />
+      )}
+      {confirmDelete && (
+        <ConfirmDialog
+          title={`Delete ${singular}`}
+          message={`Delete this ${singular.toLowerCase()}?`}
+          onConfirm={() => { const row = confirmDelete; setConfirmDelete(null); handleDelete(row) }}
+          onCancel={() => setConfirmDelete(null)}
         />
       )}
     </div>

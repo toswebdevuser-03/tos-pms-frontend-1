@@ -101,7 +101,7 @@ export function buildProjectReportHtml(d: ReportData): string {
     ${kpi('Productive hrs', Math.round(d.logged * 10) / 10, d.quoted ? `of ${d.quoted} quoted · ${usedPct}%` : 'no quote set')}
     ${kpi('Open RFIs', d.rfiOpen, `of ${d.rfiTotal} total`)}
     ${kpi('Open queries', d.queryOpen, `of ${d.queryTotal} total`)}
-    ${kpi('QC', `${d.qcPass}✓ / ${d.qcFail}✗`, `${d.qcPend} pending`)}
+    ${kpi('QA/QC', `${d.qcPass}✓ / ${d.qcFail}✗`, `${d.qcPend} pending`)}
     ${kpi('Dispatches', d.dispatch)}
     ${kpi('WIP items', d.wip)}
     ${kpi('Team', d.members, 'members')}
@@ -133,7 +133,7 @@ export function buildProjectReportHtml(d: ReportData): string {
     <tr><td>Queries (open / total)</td><td>${d.queryOpen} / ${d.queryTotal}</td></tr>
     <tr><td>Dispatches</td><td>${d.dispatch}</td></tr>
     <tr><td>WIP items</td><td>${d.wip}</td></tr>
-    <tr><td>QC (pass / fail / pending)</td><td>${d.qcPass} / ${d.qcFail} / ${d.qcPend}</td></tr>
+    <tr><td>QA/QC (pass / fail / pending)</td><td>${d.qcPass} / ${d.qcFail} / ${d.qcPend}</td></tr>
     <tr><td>Standards documented</td><td>${d.standards}</td></tr>
     <tr><td>Team members</td><td>${d.members}</td></tr>
   </table>

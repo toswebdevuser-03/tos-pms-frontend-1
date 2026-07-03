@@ -1,7 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Project } from '../types'
 import { useApp } from '../context/AppContext'
+import { useData } from '../context/DataContext'
+import { num } from '../lib/hours'
 import Icon from './Icon'
+import { useEscapeKey } from '../lib/useEscapeKey'
 
 interface Props {
   projects: Project[]
@@ -11,7 +14,6 @@ interface Props {
 
 type Row = Record<string, unknown>
 const s = (v: unknown): string => String(v ?? '')
-const num = (v: unknown): number => { const n = parseFloat(String(v ?? '')); return isNaN(n) ? 0 : n }
 
 function weekRange(): { start: Date; end: Date; keys: string[] } {
   const now = new Date(); now.setHours(0, 0, 0, 0)
@@ -23,30 +25,42 @@ function weekRange(): { start: Date; end: Date; keys: string[] } {
 }
 
 export default function MyWeekModal({ projects, onClose, onNavigate }: Props) {
+  useEscapeKey(onClose)
   const { currentMember } = useApp()
-  const [tasks, setTasks] = useState<Row[]>([])
+  // Tasks/timesheets come from the shared data layer (one cached load). Allocations
+  // are not provided by the data layer, so they keep their own per-project loop.
+  const { tasks: allTasks, timesheets: allTimesheets } = useData()
   const [allocs, setAllocs] = useState<Row[]>([])
-  const [timesheets, setTimesheets] = useState<Row[]>([])
   const { keys } = useMemo(weekRange, [])
   const projName = useMemo(() => new Map(projects.map((p) => [p.id, p.name])), [projects])
+  const projIds = useMemo(() => new Set(projects.map((p) => Number(p.id))), [projects])
 
-  const load = useCallback(async () => {
-    if (!currentMember) return
-    const T: Row[] = [], A: Row[] = [], H: Row[] = []
+  // My tasks / timesheets, scoped to the projects passed in.
+  const tasks = useMemo<Row[]>(() => {
+    if (!currentMember) return []
+    return allTasks
+      .filter((r) => projIds.has(Number(r.project_id)) && String(r.assigned_member_id) === String(currentMember.id))
+      .map((r) => ({ ...r, project_id: Number(r.project_id) }))
+  }, [allTasks, projIds, currentMember])
+  const timesheets = useMemo<Row[]>(() => {
+    if (!currentMember) return []
+    return allTimesheets
+      .filter((r) => projIds.has(Number(r.project_id)) && String(r.member_id) === String(currentMember.id))
+      .map((r) => ({ ...r, project_id: Number(r.project_id) }))
+  }, [allTimesheets, projIds, currentMember])
+
+  const loadAllocs = useCallback(async () => {
+    if (!currentMember) { setAllocs([]); return }
+    const A: Row[] = []
     await Promise.all(projects.map(async (p) => {
-      const [t, a, h] = await Promise.all([
-        window.api.items.getByProject(p.id, 'task'),
-        window.api.items.getByProject(p.id, 'allocation'),
-        window.api.items.getByProject(p.id, 'timesheet')
-      ])
-      const mine = (rows: Row[], field: string): Row[] => rows.filter((r) => String(r[field]) === String(currentMember.id)).map((r) => ({ ...r, project_id: p.id }))
-      if (t.ok) T.push(...mine(t.data as Row[], 'assigned_member_id'))
-      if (a.ok) A.push(...mine(a.data as Row[], 'member_id'))
-      if (h.ok) H.push(...mine(h.data as Row[], 'member_id'))
+      const a = await window.api.items.getByProject(p.id, 'allocation')
+      if (a.ok) (a.data as Row[])
+        .filter((r) => String(r.member_id) === String(currentMember.id))
+        .forEach((r) => A.push({ ...r, project_id: p.id }))
     }))
-    setTasks(T); setAllocs(A); setTimesheets(H)
+    setAllocs(A)
   }, [projects, currentMember])
-  useEffect(() => { load() }, [load])
+  useEffect(() => { loadAllocs() }, [loadAllocs])
 
   const today = new Date().toISOString().slice(0, 10)
   const dueTasks = useMemo(() =>
@@ -59,7 +73,7 @@ export default function MyWeekModal({ projects, onClose, onNavigate }: Props) {
   const open = (pid: number, tab: string): void => { if (onNavigate) { onNavigate(pid, tab); onClose() } }
 
   return (
-    <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal" style={{ width: 720 }}>
         <div className="modal-header">
           <h3><Icon name="calendar" size={18} /> My Week</h3>

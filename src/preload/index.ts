@@ -25,8 +25,8 @@ contextBridge.exposeInMainWorld('api', {
   },
   members: {
     getAll: () => ipcRenderer.invoke('members:getAll'),
-    create: (data: { name: string; email: string; role: string; discipline?: string }) => ipcRenderer.invoke('members:create', data),
-    update: (data: { id: number; name: string; email: string; role: string; discipline?: string }) => ipcRenderer.invoke('members:update', data),
+    create: (data: { name: string; email: string; role: string; discipline?: string; engagement?: string }) => ipcRenderer.invoke('members:create', data),
+    update: (data: { id: number; name: string; email: string; role: string; discipline?: string; engagement?: string }) => ipcRenderer.invoke('members:update', data),
     updateSkills: (id: number, skills: unknown[]) => ipcRenderer.invoke('members:updateSkills', { id, skills }),
     setActive: (id: number, active: boolean) => ipcRenderer.invoke('members:setActive', { id, active }),
     delete: (id: number) => ipcRenderer.invoke('members:delete', { id })
@@ -36,6 +36,11 @@ contextBridge.exposeInMainWorld('api', {
     all: () => ipcRenderer.invoke('projectMembers:all'),
     assign: (projectId: number, memberId: number) => ipcRenderer.invoke('projectMembers:assign', { projectId, memberId }),
     unassign: (projectId: number, memberId: number) => ipcRenderer.invoke('projectMembers:unassign', { projectId, memberId })
+  },
+  overtime: {
+    list: () => ipcRenderer.invoke('overtime:list'),
+    request: (d: { date: string; hours: number; reason?: string }) => ipcRenderer.invoke('overtime:request', d),
+    decide: (id: number, status: string) => ipcRenderer.invoke('overtime:decide', { id, status })
   },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),

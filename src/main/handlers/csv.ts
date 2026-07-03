@@ -20,7 +20,7 @@ export const COLUMN_LABELS: Record<string, string> = {
   rfi_number: 'RFI #', query_number: 'Query #', dispatch_number: 'Dispatch #',
   submitted_date: 'Submitted', response_date: 'Response Date', raised_date: 'Raised',
   resolved_date: 'Resolved', dispatch_date: 'Dispatch Date', planned_date: 'Planned Date',
-  inspection_date: 'QC Date', checklist_item: 'Title / Area', assigned_member_id: 'Assigned (id)',
+  inspection_date: 'QA/QC Date', checklist_item: 'Title / Area', assigned_member_id: 'Assigned (id)',
   member_id: 'Member (id)', task_name: 'WIP Task', execution_hrs: 'Exec hrs', discussion_hrs: 'Disc hrs',
   qc_hrs: 'QC hrs', it_issue_hrs: 'IT hrs', correction_hrs: 'Correction hrs', overtime_hrs: 'OT hrs',
   total_hrs: 'Total hrs', productive_hrs: 'Productive hrs', last_updated: 'Last Updated', path: 'Path'

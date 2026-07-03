@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext'
 import { overallOf } from '../tabs/FeedbackTab'
 import { roleLabel } from '../roles'
 import Icon from './Icon'
+import { useEscapeKey } from '../lib/useEscapeKey'
 
 interface Props {
   projects: Project[]
@@ -20,6 +21,7 @@ interface Ranked {
 }
 
 export default function BestFitModal({ projects, onClose }: Props) {
+  useEscapeKey(onClose)
   const { members } = useApp()
   const [required, setRequired] = useState('')
   const [feedback, setFeedback] = useState<Row[]>([])
@@ -74,7 +76,8 @@ export default function BestFitModal({ projects, onClose }: Props) {
       const open = openByMember.get(String(m.id)) ?? 0
       const perfNorm = p.reviews > 0 ? p.overall / 5 : 0.5 // neutral if unrated
       const availability = 1 - Math.min(open / 5, 1)
-      const final = 0.6 * semantic + 0.25 * perfNorm + 0.15 * availability
+      // Weighting: 40% skills match · 40% past project record · 20% availability.
+      const final = 0.4 * semantic + 0.4 * perfNorm + 0.2 * availability
       return { id: m.id, name: m.name, role: m.role, discipline: m.discipline ?? '', semantic, overall: p.overall, reviews: p.reviews, open, final, skills: m.skills ?? [] }
     }).sort((a, b) => b.final - a.final)
     setRanked(rows)
@@ -82,14 +85,18 @@ export default function BestFitModal({ projects, onClose }: Props) {
   }
 
   const explain = (r: Ranked): string => {
-    const parts = [`${Math.round(r.semantic * 100)}% skill match`]
-    if (r.reviews > 0) parts.push(`${r.overall}★ performance`)
-    parts.push(`${r.open} open task${r.open !== 1 ? 's' : ''}`)
+    const perfNorm = r.reviews > 0 ? r.overall / 5 : 0.5
+    const availability = 1 - Math.min(r.open / 5, 1)
+    const parts = [
+      `Skills 40% → ${Math.round(r.semantic * 100)}%`,
+      `Record 40% → ${r.reviews > 0 ? `${r.overall}★` : 'unrated'} (${Math.round(perfNorm * 100)}%)`,
+      `Availability 20% → ${Math.round(availability * 100)}% (${r.open} open)`
+    ]
     return parts.join(' · ')
   }
 
   return (
-    <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal" style={{ width: 760 }}>
         <div className="modal-header">
           <h3><Icon name="target" size={18} /> Best-Fit Staffing</h3>
@@ -97,7 +104,7 @@ export default function BestFitModal({ projects, onClose }: Props) {
         </div>
         <div className="modal-body">
           <p className="login-sub" style={{ marginBottom: 10 }}>
-            Describe the skills the upcoming project needs. Ranking blends AI skill match (60%), past performance (25%) and current availability (15%).
+            Describe the skills the upcoming project needs. Ranking blends AI skill match (40%), past project record (40%) and current availability (20%).
           </p>
           <label className="bf-label">Required skills / project brief</label>
           <textarea className="bf-input" rows={3} value={required} onChange={(e) => setRequired(e.target.value)}

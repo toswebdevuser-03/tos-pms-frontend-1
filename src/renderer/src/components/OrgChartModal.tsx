@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { OrgNode, ORG_TREE, avatarColor } from '../orgData'
 import Icon from './Icon'
+import { useEscapeKey } from '../lib/useEscapeKey'
 
 function countPeople(node: OrgNode): number {
   const self = node.group ? 0 : 1
@@ -17,7 +18,7 @@ function TreeNode({ node, depth }: { node: OrgNode; depth: number }): React.JSX.
       <div className={`org-node${node.group ? ' org-group' : ''}`}>
         {hasKids ? (
           <button className="org-toggle" onClick={() => setOpen((o) => !o)} title={open ? 'Collapse' : 'Expand'}>
-            {open ? '▾' : '▸'}
+            <Icon name={open ? 'chevronDown' : 'chevronRight'} size={12} />
           </button>
         ) : (
           <span className="org-toggle org-toggle-leaf">•</span>
@@ -60,6 +61,7 @@ function TreeNode({ node, depth }: { node: OrgNode; depth: number }): React.JSX.
 }
 
 export default function OrgChartModal({ onClose }: { onClose: () => void }): React.JSX.Element {
+  useEscapeKey(onClose)
   const total = countPeople(ORG_TREE)
   return (
     <div className="modal-overlay" onClick={onClose}>

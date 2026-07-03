@@ -1,22 +1,10 @@
+import { useState, useEffect, useMemo } from 'react'
 import CrudTab from '../components/CrudTab'
 import { Column } from '../components/DataTable'
 import { FieldDef } from '../components/FormModal'
-
-const COLUMNS: Column[] = [
-  { key: 'dispatch_number', label: 'Dispatch #', width: '100px' },
-  { key: 'description', label: 'Description' },
-  { key: 'recipient', label: 'Recipient', width: '140px' },
-  { key: 'dispatch_date', label: 'Dispatch Date', width: '120px' },
-  { key: 'status', label: 'Status', width: '120px' }
-]
-
-const FIELDS: FieldDef[] = [
-  { key: 'dispatch_number', label: 'Dispatch Number', required: true },
-  { key: 'description', label: 'Description', type: 'textarea' },
-  { key: 'recipient', label: 'Recipient' },
-  { key: 'dispatch_date', label: 'Dispatch Date', type: 'date', adminOnly: true },
-  { key: 'status', label: 'Status', type: 'select', options: ['Draft', 'Sent', 'Acknowledged'] }
-]
+import { Member } from '../types'
+import { useApp } from '../context/AppContext'
+import { memberNameMap } from '../lib/people'
 
 interface Props {
   projectId: number
@@ -24,12 +12,49 @@ interface Props {
   onToast: (msg: string, type?: 'success' | 'error') => void
 }
 
+// Merged Dispatch + WIP: schedule each deliverable for dispatch (date + assignee);
+// a reminder appears in the Inbox as the scheduled date approaches/passes.
+const STATUS = ['Scheduled', 'In Progress', 'Dispatched', 'Acknowledged', 'Hold']
+
 export default function DispatchTab({ projectId, projectName, onToast }: Props) {
+  const { isLead } = useApp() // project-setup section: Team Lead+ only
+  const [members, setMembers] = useState<Member[]>([])
+
+  useEffect(() => {
+    window.api.projectMembers.get(projectId).then((res) => { if (res.ok) setMembers(res.data as Member[]) })
+  }, [projectId])
+
+  const nameById = useMemo(() => memberNameMap(members), [members])
+
+  const columns: Column[] = [
+    { key: 'dispatch_number', label: 'Ref', width: '90px' },
+    { key: 'description', label: 'Item / deliverable' },
+    {
+      key: 'assigned_member_id', label: 'Assignee', width: '140px',
+      render: (v, row) => (v ? (nameById.get(String(v)) || '—') : (row.recipient ? String(row.recipient) : '—'))
+    },
+    { key: 'dispatch_date', label: 'Scheduled', width: '120px' },
+    { key: 'status', label: 'Status', width: '120px' }
+  ]
+
+  const fields: FieldDef[] = [
+    { key: 'dispatch_number', label: 'Reference (optional)' },
+    { key: 'description', label: 'Item / deliverable', type: 'textarea', required: true },
+    {
+      key: 'assigned_member_id', label: 'Assignee', type: 'select',
+      optionValues: [{ label: '— Unassigned', value: '' }, ...members.map((m) => ({ label: m.name, value: String(m.id) }))]
+    },
+    { key: 'recipient', label: 'Recipient (client)' },
+    { key: 'dispatch_date', label: 'Scheduled dispatch date', type: 'date', required: true },
+    { key: 'status', label: 'Status', type: 'select', options: STATUS }
+  ]
+
   return (
     <CrudTab
       type="dispatch" singular="Dispatch" projectId={projectId} projectName={projectName}
-      columns={COLUMNS} fields={FIELDS} adminOnlyAdd onToast={onToast}
-      emptyHint="No dispatches yet. Admins define dispatch dates."
+      columns={columns} fields={fields} onToast={onToast}
+      addAllowed={isLead} canEditRow={() => isLead} canDeleteRow={() => isLead}
+      emptyHint="No dispatches scheduled yet. Add a deliverable with its scheduled date and assignee — a reminder appears in the Inbox as the date approaches."
     />
   )
 }

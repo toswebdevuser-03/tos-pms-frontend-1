@@ -10,6 +10,7 @@ interface Props {
   selectedId: number | null
   onSelect: (id: number) => void
   searching: boolean
+  unseenByProject?: Map<number, number> // unseen-update count per project, for the badges
 }
 
 const UNSET = '— Unassigned'
@@ -21,7 +22,7 @@ function groupKey(p: Project, by: GroupBy, statusMap: Record<number, string>): s
   return statusMap[p.id] || '— No status'
 }
 
-export default function ProjectTree({ projects, statusMap, selectedId, onSelect, searching }: Props) {
+export default function ProjectTree({ projects, statusMap, selectedId, onSelect, searching, unseenByProject }: Props) {
   const [groupBy, setGroupBy] = useState<GroupBy>(() => (localStorage.getItem('groupBy') as GroupBy) || 'discipline')
   const [collapsed, setCollapsed] = useState<Set<string>>(() => {
     try { return new Set(JSON.parse(localStorage.getItem('collapsedGroups') || '[]')) } catch { return new Set() }
@@ -71,31 +72,38 @@ export default function ProjectTree({ projects, statusMap, selectedId, onSelect,
       <div className="tree-body">
         {groups.map(([name, projs]) => {
           const isOpen = searching || !collapsed.has(name)
+          const groupUnseen = unseenByProject ? projs.reduce((sum, p) => sum + (unseenByProject.get(p.id) ?? 0), 0) : 0
           return (
             <div className="tree-group" key={name}>
               <div className="tree-group-head" onClick={() => toggle(name)}>
-                <span className={`tree-chevron${isOpen ? ' open' : ''}`}>▸</span>
+                <span className={`tree-chevron${isOpen ? ' open' : ''}`}><Icon name="chevronRight" size={12} /></span>
                 {groupBy === 'discipline' && name !== UNSET && <span className="proj-icon"><DisciplineIcon discipline={name} size={15} /></span>}
                 {groupBy !== 'discipline' && <span className="proj-icon"><Icon name="folder" size={15} /></span>}
                 <span className="tree-group-name" title={name}>{name}</span>
                 <span className="tree-group-count">{projs.length}</span>
+                {groupUnseen > 0 && <span className="reminder-pill" title={`${groupUnseen} unseen update${groupUnseen === 1 ? '' : 's'}`}>{groupUnseen}</span>}
               </div>
               {isOpen && (
                 <div className="tree-children">
-                  {projs.map((p) => (
-                    <div
-                      key={p.id}
-                      className={`project-item${selectedId === p.id ? ' active' : ''}`}
-                      onClick={() => onSelect(p.id)}
-                    >
-                      <div className="proj-name">
-                        <span className="proj-icon" title={p.discipline}><DisciplineIcon discipline={p.discipline} size={14} /></span> {p.name}
+                  {projs.map((p) => {
+                    const unseenN = unseenByProject?.get(p.id) ?? 0
+                    return (
+                      <div
+                        key={p.id}
+                        className={`project-item${selectedId === p.id ? ' active' : ''}`}
+                        onClick={() => onSelect(p.id)}
+                      >
+                        <div className="proj-name">
+                          <span className="proj-icon" title={p.discipline}><DisciplineIcon discipline={p.discipline} size={14} /></span>
+                          <span className="proj-name-text">{p.name}</span>
+                          {unseenN > 0 && <span className="reminder-pill" title={`${unseenN} unseen update${unseenN === 1 ? '' : 's'}`}>{unseenN}</span>}
+                        </div>
+                        <div className="proj-meta">
+                          {[statusMap[p.id], p.client, p.location].filter(Boolean).join(' · ') || 'No details'}
+                        </div>
                       </div>
-                      <div className="proj-meta">
-                        {[statusMap[p.id], p.client, p.location].filter(Boolean).join(' · ') || 'No details'}
-                      </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </div>

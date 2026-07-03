@@ -24,7 +24,7 @@ interface Props {
 }
 
 export default function StandardsTab({ projectId, projectName, onToast }: Props) {
-  const { isAdmin } = useApp()
+  const { isLead } = useApp() // project-setup section: Team Lead+ only
   const [reloadSignal, setReloadSignal] = useState(0)
 
   const openPath = async (p: string): Promise<void> => {
@@ -45,7 +45,7 @@ export default function StandardsTab({ projectId, projectName, onToast }: Props)
         v ? (
           <div className="path-cell">
             <span className="path-text" title={String(v)}>{String(v)}</span>
-            <button className="btn-icon" title="Open" onClick={(e) => { e.stopPropagation(); openPath(String(v)) }}>↗</button>
+            <button className="btn-icon" title="Open" onClick={(e) => { e.stopPropagation(); openPath(String(v)) }}><Icon name="externalLink" size={15} /></button>
             <button className="btn-icon" title="Show in Explorer" onClick={(e) => { e.stopPropagation(); reveal(String(v)) }}><Icon name="folder" size={15} /></button>
           </div>
         ) : (
@@ -68,19 +68,20 @@ export default function StandardsTab({ projectId, projectName, onToast }: Props)
     setReloadSignal((x) => x + 1)
   }
 
-  const importBtn = isAdmin ? (
+  const importBtn = isLead ? (
     <button className="btn btn-secondary btn-sm" onClick={handleImport} title="Import standards from a CSV file">
-      ⬆ Import standards
+      <Icon name="upload" size={14} /> Import standards
     </button>
   ) : null
 
   return (
     <CrudTab
       type="standard" singular="Standard" projectId={projectId} projectName={projectName}
-      columns={columns} fields={FIELDS} attachments adminOnlyAdd onToast={onToast}
+      columns={columns} fields={FIELDS} attachments onToast={onToast}
+      addAllowed={isLead} canEditRow={() => isLead} canDeleteRow={() => isLead}
       toolbarExtra={importBtn}
       reloadSignal={reloadSignal}
-      emptyHint="No standards documented yet. Admins add them here (with a file/folder path) or import a CSV."
+      emptyHint="No standards documented yet. Team Leads and Managers add them here (with a file/folder path) or import a CSV."
     />
   )
 }

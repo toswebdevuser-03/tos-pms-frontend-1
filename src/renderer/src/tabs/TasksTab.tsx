@@ -1,10 +1,15 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import DataTable, { Column } from '../components/DataTable'
 import FormModal, { FieldDef } from '../components/FormModal'
+import ConfirmDialog from '../components/ConfirmDialog'
 import Icon from '../components/Icon'
 import { Member } from '../types'
 import { useApp } from '../context/AppContext'
-import { roleRank, RANK_LEAD } from '../roles'
+import { useData } from '../context/DataContext'
+import { roleRank } from '../roles'
+import { DISCIPLINES, splitDisciplines } from '../disciplines'
+import { useFilters } from '../components/FilterBar'
+import { memberNameMap } from '../lib/people'
 
 interface Props {
   projectId: number
@@ -16,12 +21,17 @@ type Row = Record<string, unknown>
 
 export default function TasksTab({ projectId, projectName, onToast }: Props) {
   const { isAdmin, isManager, currentMember } = useApp()
+  const { projects } = useData()
+  // Task discipline options = this project's disciplines (fall back to the full list).
+  const discOptions = useMemo(() => {
+    const d = splitDisciplines(projects.find((p) => p.id === projectId)?.discipline || '')
+    return d.length ? d : DISCIPLINES
+  }, [projects, projectId])
   const [members, setMembers] = useState<Member[]>([])
   const [rows, setRows] = useState<Row[]>([])
   const [modal, setModal] = useState<{ mode: 'add' | 'edit'; row?: Row } | null>(null)
   const [view, setView] = useState<'list' | 'board'>('list')
-  const [dragId, setDragId] = useState<number | null>(null)
-  const [overCol, setOverCol] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<Row | null>(null)
 
   const load = useCallback(async () => {
     const res = await window.api.items.getByProject(projectId, 'task')
@@ -33,11 +43,7 @@ export default function TasksTab({ projectId, projectName, onToast }: Props) {
   }, [projectId])
   useEffect(() => { load() }, [load])
 
-  const nameById = useMemo(() => {
-    const m = new Map<string, string>()
-    members.forEach((mb) => m.set(String(mb.id), mb.name))
-    return m
-  }, [members])
+  const nameById = useMemo(() => memberNameMap(members), [members])
 
   // Open-task workload per member (this project).
   const openByMember = useMemo(() => {
@@ -51,15 +57,16 @@ export default function TasksTab({ projectId, projectName, onToast }: Props) {
     return m
   }, [rows])
 
-  // Who the current actor may assign to (role-tier rules):
-  // Manager/Company Admin → anyone; Team Lead → Employees only; Employee → no one.
+  // Who the current actor may assign to:
+  // Manager/Company Admin → anyone; Team Lead → Project Lead + Employee; Project Lead → Employee only.
+  const myRank = roleRank(currentMember?.role)
   const assignable = useMemo(() => {
     return members.filter((mb) => {
       if (isManager) return true
-      if (isAdmin) return roleRank(mb.role) < RANK_LEAD
+      if (isAdmin) return roleRank(mb.role) < myRank
       return false
     })
-  }, [members, isManager, isAdmin])
+  }, [members, isManager, isAdmin, myRank])
 
   const assignOptions = useMemo(
     () => [
@@ -69,11 +76,14 @@ export default function TasksTab({ projectId, projectName, onToast }: Props) {
     [assignable, openByMember]
   )
 
+  // Status is NOT manually editable — a task starts 'Not Started' and is moved to
+  // 'In Progress' / 'Done' automatically when the assignee logs time via the Task Timer.
   const fields: FieldDef[] = [
     { key: 'name', label: 'Task Name', required: true, adminOnly: true },
+    { key: 'discipline', label: 'Discipline', type: 'select', adminOnly: true, options: discOptions },
     { key: 'assigned_member_id', label: 'Assign / delegate to', type: 'select', adminOnly: true, optionValues: assignOptions },
     { key: 'deadline', label: 'Deadline', type: 'date', adminOnly: true },
-    { key: 'status', label: 'Completion Status', type: 'select', options: ['Not Started', 'In Progress', 'Done'] }
+    { key: 'hours', label: 'Planned hrs', type: 'number', adminOnly: true }
   ]
 
   // Full payload on every write — remote store replaces the JSON blob, so we must
@@ -83,8 +93,10 @@ export default function TasksTab({ projectId, projectName, onToast }: Props) {
     const payload: Row = {
       project_id: projectId,
       name: base.name ?? '',
+      discipline: base.discipline ?? '',
       assigned_member_id: base.assigned_member_id ?? '',
       deadline: base.deadline ?? '',
+      hours: base.hours ?? '',
       status: base.status ?? 'Not Started',
       acceptance: base.acceptance ?? '',
       assigned_by: base.assigned_by ?? '',
@@ -119,7 +131,7 @@ export default function TasksTab({ projectId, projectName, onToast }: Props) {
         member_id: Number(newAssignee),
         task_id: savedId,
         date: allocDate,
-        hours: '',
+        hours: data.hours ?? '',
         note: ''
       })
     }
@@ -136,7 +148,6 @@ export default function TasksTab({ projectId, projectName, onToast }: Props) {
   }
 
   const handleDelete = async (row: Row): Promise<void> => {
-    if (!confirm('Delete this task?')) return
     await window.api.items.delete('task', row.id as number)
     onToast('Task deleted')
     load()
@@ -167,6 +178,7 @@ export default function TasksTab({ projectId, projectName, onToast }: Props) {
 
   const columns: Column[] = [
     { key: 'name', label: 'Task' },
+    { key: 'discipline', label: 'Discipline', width: '110px', render: (v) => (v ? <span className="badge badge-design">{String(v)}</span> : <span style={{ color: 'var(--text-dim)' }}>—</span>) },
     {
       key: 'assigned_member_id', label: 'Assigned', width: '170px',
       render: (v) => {
@@ -177,24 +189,33 @@ export default function TasksTab({ projectId, projectName, onToast }: Props) {
     },
     { key: 'acceptance', label: 'Handoff', width: '150px', render: acceptanceCell },
     { key: 'deadline', label: 'Deadline', width: '120px' },
+    { key: 'hours', label: 'Hrs', width: '60px', render: (v) => (v ? String(v) : <span style={{ color: 'var(--text-dim)' }}>—</span>) },
     { key: 'status', label: 'Status', width: '130px' }
   ]
 
-  // Admins (Team Lead+) edit any task; an assignee may edit (their status) their own task.
-  const canEditRow = (row: Row): boolean =>
-    isAdmin || (!!currentMember && String(row.assigned_member_id) === String(currentMember.id))
+  // Only Team Lead+ edit task details (name/assignee/deadline/hours). Status is no
+  // longer editable by anyone here — it's driven by the Task Timer.
+  const canEditRow = (): boolean => isAdmin
 
   const STAGES = ['Not Started', 'In Progress', 'Done'] as const
-  const dropTo = async (status: string): Promise<void> => {
-    setOverCol(null)
-    const row = rows.find((r) => r.id === dragId)
-    setDragId(null)
-    if (!row || row.status === status) return
-    if (!canEditRow(row)) { onToast('You can only move tasks assigned to you', 'error'); return }
-    await writeTask(row, { status })
-    onToast(`Moved to ${status}`)
-    load()
-  }
+
+  // Add a display-name field so the filter bar can offer an assignee dropdown
+  // and search/match by member name (rows only carry assigned_member_id).
+  const rowsWithAssignee = useMemo(
+    () => rows.map((r) => ({ ...r, assignee: r.assigned_member_id ? (nameById.get(String(r.assigned_member_id)) ?? '') : '' })),
+    [rows, nameById]
+  )
+
+  const { filtered, bar, sortKey, sortDir, onHeaderSort } = useFilters(rowsWithAssignee, {
+    searchKeys: ['name', 'assignee'],
+    searchPlaceholder: 'Search tasks…',
+    selects: [
+      { key: 'status', label: 'Status', options: ['Not Started', 'In Progress', 'Done'] },
+      { key: 'assignee', label: 'Assignee' }
+    ],
+    dateKey: 'deadline',
+    dateLabel: 'Deadline'
+  })
 
   const done = rows.filter((r) => r.status === 'Done').length
   const progress = rows.length ? Math.round((done / rows.length) * 100) : 0
@@ -205,11 +226,12 @@ export default function TasksTab({ projectId, projectName, onToast }: Props) {
         <div className="tab-toolbar-left">
           {isAdmin && <button className="btn btn-primary btn-sm" onClick={() => setModal({ mode: 'add' })}>+ Add Task</button>}
           {rows.length > 0 && <span className="toolbar-progress">{done}/{rows.length} done · {progress}%</span>}
+          <span className="attach-hint" style={{ margin: 0 }} title="Status moves to In Progress / Done when the assignee logs time in the Task Timer">Status is set by the Task Timer</span>
         </div>
         <div className="tab-toolbar-right">
           <div className="view-toggle">
-            <button className={`view-btn${view === 'list' ? ' active' : ''}`} onClick={() => setView('list')} title="List view">☰ List</button>
-            <button className={`view-btn${view === 'board' ? ' active' : ''}`} onClick={() => setView('board')} title="Board view">▥ Board</button>
+            <button className={`view-btn${view === 'list' ? ' active' : ''}`} onClick={() => setView('list')} title="List view"><Icon name="menu" size={14} /> List</button>
+            <button className={`view-btn${view === 'board' ? ' active' : ''}`} onClick={() => setView('board')} title="Board view"><Icon name="grid" size={14} /> Board</button>
           </div>
           <button className="btn btn-secondary btn-sm" onClick={handleExport}><Icon name="download" size={15} /> Export Excel</button>
         </div>
@@ -223,39 +245,36 @@ export default function TasksTab({ projectId, projectName, onToast }: Props) {
         </div>
       )}
 
+      {rows.length > 0 && bar}
+
       {view === 'list' ? (
         <DataTable
           columns={columns}
-          rows={rows}
+          rows={filtered}
           onEdit={(r) => setModal({ mode: 'edit', row: r })}
-          onDelete={handleDelete}
+          onDelete={(r) => setConfirmDelete(r)}
           canEdit={canEditRow}
           canDelete={() => isAdmin}
-          editLabel={isAdmin ? 'Edit' : 'Update status'}
+          editLabel="Edit"
           emptyHint="No tasks yet. Managers and Team Leads break work into tasks and assign them down the hierarchy."
+          sortKey={sortKey}
+          sortDir={sortDir}
+          onHeaderSort={onHeaderSort}
         />
       ) : (
         <div className="kanban">
           {STAGES.map((stage) => {
-            const col = rows.filter((r) => (r.status ?? 'Not Started') === stage)
+            const col = filtered.filter((r) => (r.status ?? 'Not Started') === stage)
             return (
-              <div
-                key={stage}
-                className={`kanban-col${overCol === stage ? ' over' : ''}`}
-                onDragOver={(e) => { e.preventDefault(); setOverCol(stage) }}
-                onDragLeave={() => setOverCol((c) => (c === stage ? null : c))}
-                onDrop={() => dropTo(stage)}
-              >
+              <div key={stage} className="kanban-col">
                 <div className="kanban-col-head"><span className={`kanban-dot s-${stage.toLowerCase().replace(/\s+/g, '-')}`} />{stage}<span className="kanban-count">{col.length}</span></div>
                 <div className="kanban-cards">
                   {col.map((t) => (
                     <div
                       key={t.id as number}
-                      className={`kanban-card${dragId === t.id ? ' dragging' : ''}${canEditRow(t) ? '' : ' locked'}`}
-                      draggable={canEditRow(t)}
-                      onDragStart={() => setDragId(t.id as number)}
-                      onDragEnd={() => { setDragId(null); setOverCol(null) }}
-                      onClick={() => setModal({ mode: 'edit', row: t })}
+                      className="kanban-card"
+                      onClick={() => { if (isAdmin) setModal({ mode: 'edit', row: t }) }}
+                      style={{ cursor: isAdmin ? 'pointer' : 'default' }}
                     >
                       <div className="kanban-card-title">{String(t.name ?? '')}</div>
                       <div className="kanban-card-meta">
@@ -282,6 +301,14 @@ export default function TasksTab({ projectId, projectName, onToast }: Props) {
           onSubmit={handleSubmit}
           onClose={() => setModal(null)}
           onToast={onToast}
+        />
+      )}
+      {confirmDelete && (
+        <ConfirmDialog
+          title="Delete task"
+          message="Delete this task?"
+          onConfirm={() => { const row = confirmDelete; setConfirmDelete(null); handleDelete(row) }}
+          onCancel={() => setConfirmDelete(null)}
         />
       )}
     </div>
