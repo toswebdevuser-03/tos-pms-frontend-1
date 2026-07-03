@@ -31,32 +31,8 @@ export default function MembersModal({ onClose, onToast }: Props) {
       await window.api.members.update({ id: editId, name, email, role, discipline })
       onToast('Member updated')
     } else {
-      const res = await window.api.members.create({ name, email, role, discipline })
-      if (!res || !res.ok || !res.data?.id) {
-        const error = res?.error || 'Unknown error occurred'
-        onToast(`Failed to create member: ${error}`, 'error')
-        return
-      }
-      const memberId = res.data.id
+      await window.api.members.create({ name, email, role, discipline })
       onToast('Member added')
-      
-      const password = prompt('Set a temporary password for this member (minimum 6 characters):')
-      if (password) {
-        if (password.length < 6) {
-          onToast('Password must be at least 6 characters', 'error')
-        } else {
-          try {
-            const authRes = await window.api.auth.createUser(memberId, password)
-            if (authRes.ok) {
-              onToast('Login created — share password securely. User resets on first login.', 'success')
-            } else {
-              onToast(`Login creation failed: ${authRes.error || 'Unknown error'}`, 'error')
-            }
-          } catch (e) {
-            onToast(`Login creation failed: ${String(e)}`, 'error')
-          }
-        }
-      }
     }
     reset()
     refreshMembers()

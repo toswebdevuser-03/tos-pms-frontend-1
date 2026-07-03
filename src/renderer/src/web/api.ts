@@ -320,8 +320,7 @@ function buildApi(): unknown {
         return { ok: true, data: { user: r.data.user, mustReset: r.data.mustReset } }
       },
       logout: async () => { setToken(''); return { ok: true, data: null } },
-      changePassword: (currentPassword: string, newPassword: string) => call('POST', '/auth/change-password', { currentPassword, newPassword }),
-      createUser: (memberId: number, password: string) => call('POST', '/auth/users', { memberId, password })
+      changePassword: (currentPassword: string, newPassword: string) => call('POST', '/auth/change-password', { currentPassword, newPassword })
     },
     ai: {
       skillFit: async (requiredText: string, candidates: { id: number; text: string }[]) => {

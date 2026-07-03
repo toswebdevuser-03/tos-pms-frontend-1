@@ -88,9 +88,7 @@ contextBridge.exposeInMainWorld('api', {
     login: (email: string, password: string) => ipcRenderer.invoke('auth:login', { email, password }),
     logout: () => ipcRenderer.invoke('auth:logout'),
     changePassword: (currentPassword: string, newPassword: string) =>
-      ipcRenderer.invoke('auth:changePassword', { currentPassword, newPassword }),
-    createUser: (memberId: number, password: string) =>
-      ipcRenderer.invoke('auth:createUser', { memberId, password })
+      ipcRenderer.invoke('auth:changePassword', { currentPassword, newPassword })
   },
   ai: {
     skillFit: (requiredText: string, candidates: { id: number; text: string }[]) =>

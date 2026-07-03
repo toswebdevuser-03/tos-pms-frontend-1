@@ -1,0 +1,21 @@
+# Dependencies & build output
+node_modules/
+
+.vercel/
+
+# Secrets & local data (never commit) — keep .env.example, ignore real envs
+
+
+# Local app config (per-machine: storage mode, server URL, auth token)
+# (app-config.json lives in userData, not the repo, but ignore if copied here)
+app-config.json
+
+# ruflo / claude-flow tooling (added by `ruflo init` — not part of the app)
+.claude-flow/
+.claude/
+.mcp.json
+CLAUDE.md
+.swarm/
+.hive-mind/
+.ruflo/
+ruflo.config.*

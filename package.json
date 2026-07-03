@@ -37,12 +37,12 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/ws": "^8.18.1",
-    "@vitejs/plugin-react": "5.1.0",
+    "@vitejs/plugin-react": "^4.3.4",
     "electron": "^43.0.0",
     "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "typescript": "^5.7.3",
-    "vite": "^7.1.7"
+    "vite": "^8.1.2"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",

@@ -72,9 +72,6 @@ export async function me(): Promise<{ user: AuthUser }> {
 export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
   await authReq('POST', '/change-password', { currentPassword, newPassword }, true)
 }
-export async function userCreate(memberId: number, password: string): Promise<{ email: string }> {
-  return authReq('POST', '/users', { memberId, password }, true)
-}
 
 // ── Settings ──────────────────────────────────────────────────────────────────
 export async function getSettings(): Promise<Settings> {

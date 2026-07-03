@@ -3,8 +3,6 @@ import CrudTab from '../components/CrudTab'
 import { Column } from '../components/DataTable'
 import { FieldDef } from '../components/FormModal'
 import { Member } from '../types'
-import { useApp } from '../context/AppContext'
-import { roleRank } from '../roles'
 
 interface Props {
   projectId: number
@@ -16,29 +14,19 @@ const WIP_INSTRUCTIONS_NOTE =
   'Follow the project WIP checklist: confirm latest drawings, apply standards, run a self-check before marking achieved.'
 
 export default function WIPTab({ projectId, projectName, onToast }: Props) {
-  const { isCompanyAdmin, isManager, members: allOrgMembers } = useApp()
-  // projectMembers: members assigned to this project, used for name lookup in the table
-  const [projectMembers, setProjectMembers] = useState<Member[]>([])
+  const [members, setMembers] = useState<Member[]>([])
 
   useEffect(() => {
     window.api.projectMembers.get(projectId).then((res) => {
-      if (res.ok) setProjectMembers(res.data as Member[])
+      if (res.ok) setMembers(res.data as Member[])
     })
   }, [projectId])
 
-  // nameById: merge org + project members so assigned names always resolve
   const nameById = useMemo(() => {
     const m = new Map<string, string>()
-    allOrgMembers.forEach((mb) => m.set(String(mb.id), mb.name))
-    projectMembers.forEach((mb) => m.set(String(mb.id), mb.name))
+    members.forEach((mb) => m.set(String(mb.id), mb.name))
     return m
-  }, [projectMembers, allOrgMembers])
-
-  // assignable: all org members with a lower rank than the current user
-  const assignable = useMemo(() => {
-    const currentUserRank = isCompanyAdmin ? 4 : isManager ? 3 : 2
-    return allOrgMembers.filter((mb) => roleRank(mb.role) < currentUserRank)
-  }, [allOrgMembers, isCompanyAdmin, isManager])
+  }, [members])
 
   const columns: Column[] = [
     { key: 'task_name', label: 'WIP Task' },
@@ -55,7 +43,7 @@ export default function WIPTab({ projectId, projectName, onToast }: Props) {
     { key: 'instructions', label: 'Instructions to follow', type: 'textarea' },
     {
       key: 'assigned_member_id', label: 'Assigned To', type: 'select',
-      optionValues: [{ label: '— Unassigned', value: '' }, ...assignable.map((m) => ({ label: m.name, value: String(m.id) }))]
+      optionValues: [{ label: '— Unassigned', value: '' }, ...members.map((m) => ({ label: m.name, value: String(m.id) }))]
     },
     { key: 'planned_date', label: 'Planned Date', type: 'date', adminOnly: true },
     { key: 'status', label: 'Status', type: 'select', options: ['Not Started', 'In Progress', 'Achieved', 'Postponed', 'Hold'] }

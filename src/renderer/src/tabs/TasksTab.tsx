@@ -4,7 +4,7 @@ import FormModal, { FieldDef } from '../components/FormModal'
 import Icon from '../components/Icon'
 import { Member } from '../types'
 import { useApp } from '../context/AppContext'
-import { roleRank } from '../roles'
+import { roleRank, RANK_LEAD } from '../roles'
 
 interface Props {
   projectId: number
@@ -15,9 +15,8 @@ interface Props {
 type Row = Record<string, unknown>
 
 export default function TasksTab({ projectId, projectName, onToast }: Props) {
-  const { isAdmin, isCompanyAdmin, isManager, currentMember, members: allOrgMembers } = useApp()
-  // projectMembers: only members assigned to this project — used for name lookup in the table
-  const [projectMembers, setProjectMembers] = useState<Member[]>([])
+  const { isAdmin, isManager, currentMember } = useApp()
+  const [members, setMembers] = useState<Member[]>([])
   const [rows, setRows] = useState<Row[]>([])
   const [modal, setModal] = useState<{ mode: 'add' | 'edit'; row?: Row } | null>(null)
   const [view, setView] = useState<'list' | 'board'>('list')
@@ -30,20 +29,15 @@ export default function TasksTab({ projectId, projectName, onToast }: Props) {
   }, [projectId])
 
   useEffect(() => {
-    window.api.projectMembers.get(projectId).then((res) => {
-      if (res.ok) setProjectMembers(res.data as Member[])
-    })
+    window.api.projectMembers.get(projectId).then((res) => { if (res.ok) setMembers(res.data as Member[]) })
   }, [projectId])
   useEffect(() => { load() }, [load])
 
-  // nameById: built from project members for displaying names in table rows
   const nameById = useMemo(() => {
     const m = new Map<string, string>()
-    // Merge both project members and all org members so names always resolve
-    allOrgMembers.forEach((mb) => m.set(String(mb.id), mb.name))
-    projectMembers.forEach((mb) => m.set(String(mb.id), mb.name))
+    members.forEach((mb) => m.set(String(mb.id), mb.name))
     return m
-  }, [projectMembers, allOrgMembers])
+  }, [members])
 
   // Open-task workload per member (this project).
   const openByMember = useMemo(() => {
@@ -57,25 +51,21 @@ export default function TasksTab({ projectId, projectName, onToast }: Props) {
     return m
   }, [rows])
 
-  // Who the current actor may assign to (hierarchical role-tier rules):
-  // Uses ALL org members (from AppContext), not just project members.
-  // Company Admin (4) → Manager, Team Lead, Employee
-  // Manager (3) → Team Lead, Employee
-  // Team Lead (2) → Employee
+  // Who the current actor may assign to (role-tier rules):
+  // Manager/Company Admin → anyone; Team Lead → Employees only; Employee → no one.
   const assignable = useMemo(() => {
-    const currentUserRank = isCompanyAdmin ? 4 : isManager ? 3 : 2
-    return allOrgMembers.filter((mb) => roleRank(mb.role) < currentUserRank)
-  }, [allOrgMembers, isCompanyAdmin, isManager])
+    return members.filter((mb) => {
+      if (isManager) return true
+      if (isAdmin) return roleRank(mb.role) < RANK_LEAD
+      return false
+    })
+  }, [members, isManager, isAdmin])
 
   const assignOptions = useMemo(
-    () => {
-      const options = [
-        { label: '— Unassigned', value: '' },
-        ...assignable.map((mb) => ({ label: `${mb.name} · ${openByMember.get(String(mb.id)) ?? 0} open`, value: String(mb.id) }))
-      ]
-      console.log('TasksTab: assignOptions:', options)
-      return options
-    },
+    () => [
+      { label: '— Unassigned', value: '' },
+      ...assignable.map((mb) => ({ label: `${mb.name} · ${openByMember.get(String(mb.id)) ?? 0} open`, value: String(mb.id) }))
+    ],
     [assignable, openByMember]
   )
 
@@ -132,9 +122,6 @@ export default function TasksTab({ projectId, projectName, onToast }: Props) {
         hours: '',
         note: ''
       })
-      // Auto-enroll the assignee into this project so they can see it in their sidebar.
-      // Uses upsert semantics on the server — safe to call even if already a member.
-      await window.api.projectMembers.assign(projectId, Number(newAssignee))
     }
 
     onToast(isNew ? 'Task added' : 'Task updated')

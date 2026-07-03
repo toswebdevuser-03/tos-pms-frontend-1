@@ -47,13 +47,4 @@ export function registerAuthHandlers(): void {
       return { ok: false, error: e instanceof Error ? e.message : String(e) }
     }
   })
-
-  ipcMain.handle('auth:createUser', async (_e, { memberId, password }) => {
-    try {
-      const result = await remote.userCreate(memberId, password)
-      return { ok: true, data: result }
-    } catch (e) {
-      return { ok: false, error: e instanceof Error ? e.message : String(e) }
-    }
-  })
 }
