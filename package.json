@@ -51,6 +51,7 @@
     "@types/nodemailer": "^8.0.1",
     "exceljs": "^3.4.0",
     "nodemailer": "^9.0.0",
+    "pptxgenjs": "^4.0.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "ws": "^8.21.0"
