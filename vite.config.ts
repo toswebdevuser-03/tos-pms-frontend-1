@@ -12,9 +12,19 @@ export default defineConfig({
   resolve: {
     alias: { '@renderer': resolve('src/renderer/src') }
   },
+  optimizeDeps: {
+    include: ['pptxgenjs']
+  },
   build: {
     outDir: resolve('dist'),
     emptyOutDir: true,
-    chunkSizeWarningLimit: 1200
+    chunkSizeWarningLimit: 1200,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          pptxgenjs: ['pptxgenjs']
+        }
+      }
+    }
   }
 })
