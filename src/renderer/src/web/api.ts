@@ -18,11 +18,7 @@ type Row = Record<string, unknown>
 // and Vercel rewrites proxy those to the backend server-side (see vercel.json).
 // This avoids cross-origin CORS entirely (and the ngrok free-tier interstitial,
 // which strips CORS headers from fresh browsers' preflights).
-let envApiBase = (((import.meta as unknown as { env?: Record<string, string> }).env?.VITE_API_BASE_URL) || '').replace(/\/$/, '')
-if (envApiBase && !envApiBase.startsWith('http')) {
-  envApiBase = 'https://' + envApiBase
-}
-const API_BASE = envApiBase
+const API_BASE = (((import.meta as unknown as { env?: Record<string, string> }).env?.VITE_API_BASE_URL) || '').replace(/\/$/, '')
 const TOKEN_KEY = 'tos_token'
 
 const getToken = (): string => { try { return localStorage.getItem(TOKEN_KEY) || '' } catch { return '' } }
