@@ -6,25 +6,14 @@ import react from '@vitejs/plugin-react'
 // electron.vite.config.ts; this config builds the renderer as a plain SPA.
 export default defineConfig({
   root: resolve('src/renderer'),
-  envDir: resolve('.'),
   base: '/',
   plugins: [react()],
   resolve: {
     alias: { '@renderer': resolve('src/renderer/src') }
   },
-  optimizeDeps: {
-    include: ['pptxgenjs']
-  },
   build: {
     outDir: resolve('dist'),
     emptyOutDir: true,
-    chunkSizeWarningLimit: 1200,
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          pptxgenjs: ['pptxgenjs']
-        }
-      }
-    }
+    chunkSizeWarningLimit: 1200
   }
 })

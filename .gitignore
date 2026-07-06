@@ -1,10 +1,18 @@
 # Dependencies & build output
 node_modules/
-
+out/
+dist/
+*.log
+*.tsbuildinfo
 .vercel/
 
 # Secrets & local data (never commit) — keep .env.example, ignore real envs
-
+.env
+.env.local
+.env.*.local
+server/.env
+server/storage/
+data.json
 
 # Local app config (per-machine: storage mode, server URL, auth token)
 # (app-config.json lives in userData, not the repo, but ignore if copied here)
@@ -19,4 +27,17 @@ CLAUDE.md
 .hive-mind/
 .ruflo/
 ruflo.config.*
+
+.vercel
+
+# Member data & admin scripts — contain PII or reveal the login-password scheme.
+# Keep these local only; never commit (repo visibility may be public).
+Production_Architecture_EMAIL.xlsx
+server/src/seed-members.ts
+server/src/gen-passwords.ts
+server/src/list-creds.ts
+server/src/export-creds.ts
+server/src/add-member.ts
+server/src/reset-password.ts
+
 .vercel
