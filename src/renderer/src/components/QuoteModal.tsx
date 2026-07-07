@@ -217,13 +217,25 @@ export default function QuoteModal({ onClose, onToast, onOpenProject }: Props) {
     w.document.write(fullHtml(q)); w.document.close(); w.focus()
     setTimeout(() => { try { w.print() } catch { /* manual */ } }, 350)
   }
-  const downloadWord = (q: Draft): void => {
-    const blob = new Blob(['﻿', wordHtml(q)], { type: 'application/msword' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url; a.download = `${(q.quote_no || 'Quotation').replace(/[^\w.\-]+/g, '_')}.doc`
-    document.body.appendChild(a); a.click(); a.remove()
-    setTimeout(() => URL.revokeObjectURL(url), 4000)
+  const downloadWord = async (q: Draft): Promise<void> => {
+    const fileName = (q.quote_no || 'Quotation').replace(/[^\w.\-]+/g, '_')
+    const doc = new Document({
+      sections: [{
+        properties: { page: { margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 } } },
+        children: [
+          new Paragraph({ heading: HeadingLevel.TITLE, children: [new TextRun({ text: `Quotation ${q.quote_no || ''}`, bold: true, size: 28 })] }),
+          new Paragraph({ spacing: { after: 200 }, children: [new TextRun({ text: q.project_name || '', size: 22 })] }),
+          new Paragraph({ spacing: { after: 200 }, children: [new TextRun({ text: `Client: ${q.client_name || ''}`, size: 20 })] }),
+          new Paragraph({ spacing: { after: 240 }, children: [new TextRun({ text: `Project Hours: ${computeHours(q).project || 0}` })] }),
+          new Paragraph({ spacing: { after: 240 }, children: [new TextRun({ text: `QC Hours: ${computeHours(q).qc || 0}` })] }),
+          new Paragraph({ spacing: { after: 240 }, children: [new TextRun({ text: `Description: ${q.description || ''}`, break: 1 })] }),
+          ...(q.description_image ? [new Paragraph({ children: [new TextRun({ text: 'Description Image', bold: true, size: 20 })] }), new Paragraph({ children: [new ImageRun({ data: parseDataUri(q.description_image)?.data || new Uint8Array(), transformation: { width: 400, height: 250 }, type: parseDataUri(q.description_image)?.type || 'png' })] })] : []),
+          ...(q.note_image ? [new Paragraph({ children: [new TextRun({ text: 'Note Image', bold: true, size: 20 })] }), new Paragraph({ children: [new ImageRun({ data: parseDataUri(q.note_image)?.data || new Uint8Array(), transformation: { width: 400, height: 250 }, type: parseDataUri(q.note_image)?.type || 'png' })] })] : []),
+          ...(q.image ? [new Paragraph({ children: [new TextRun({ text: 'Reference Image', bold: true, size: 20 })] }), new Paragraph({ children: [new ImageRun({ data: parseDataUri(q.image)?.data || new Uint8Array(), transformation: { width: 400, height: 250 }, type: parseDataUri(q.image)?.type || 'png' })] })] : []),
+        ]
+      }]
+    })
+    await downloadWordDocx(fileName, doc)
   }
 
   const selDisc = draft ? splitDisciplines(String(draft.disciplines ?? '')) : []
