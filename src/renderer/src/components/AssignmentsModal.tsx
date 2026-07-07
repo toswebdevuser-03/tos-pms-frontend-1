@@ -37,10 +37,12 @@ export default function AssignmentsModal({ projects, onClose, onToast, onChanged
     if (!memberId) return
     const name = nameById(members, memberId)
     if (assigned.has(p.id)) {
-      await window.api.projectMembers.unassign(p.id, memberId)
+      const res = await window.api.projectMembers.unassign(p.id, memberId)
+      if (!res.ok) { onToast(res.error ?? 'Could not remove project assignment', 'error'); return }
       onToast(`Removed ${name} from “${p.name}”`)
     } else {
-      await window.api.projectMembers.assign(p.id, memberId)
+      const res = await window.api.projectMembers.assign(p.id, memberId)
+      if (!res.ok) { onToast(res.error ?? 'Could not assign project', 'error'); return }
       onToast(`Assigned “${p.name}” to ${name}`)
     }
     await loadAssignments()

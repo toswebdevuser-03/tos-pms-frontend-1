@@ -148,12 +148,12 @@ function Shell() {
   const loadAssignments = useCallback(async () => {
     const res = await window.api.projectMembers.all()
     if (!res.ok) return
-    const cid = currentMember?.id
-    if (!cid) { setMyAssignments(new Set()); return }
+    const memberIds = [currentMember?.id, authUser?.mid].filter((id): id is number => typeof id === 'number')
+    if (memberIds.length === 0) { setMyAssignments(new Set()); return }
     const ids = (res.data as { project_id: number; member_id: number }[])
-      .filter((r) => r.member_id === cid).map((r) => r.project_id)
+      .filter((r) => memberIds.includes(r.member_id)).map((r) => r.project_id)
     setMyAssignments(new Set(ids))
-  }, [currentMember])
+  }, [currentMember, authUser?.mid])
 
   useEffect(() => { loadProjects(); loadStatuses(); loadReminderCount() }, [loadProjects, loadStatuses, loadReminderCount])
   useEffect(() => { loadAssignments() }, [loadAssignments])
@@ -256,19 +256,28 @@ function Shell() {
   //  Manager       → projects in their discipline(s), plus any assigned to them
   //  Team Lead     → projects they created or are assigned to
   //  others        → projects assigned to them
-  const myDiscipline = currentMember?.discipline || ''
+  const myDiscipline = currentMember?.discipline || authUser?.discipline || ''
   const myName = authUser?.name || currentMember?.name || ''
+  const managerDisciplines = useMemo(() => splitDisciplines(myDiscipline), [myDiscipline])
   const scopedProjects = useMemo(() => {
     if (isCompanyAdmin) return projects
     if (isManager) {
-      const mine = splitDisciplines(myDiscipline)
-      return projects.filter((p) => myAssignments.has(p.id) || (mine.length > 0 && splitDisciplines(p.discipline as string).some((d) => mine.includes(d))))
+      return projects.filter((p) =>
+        myAssignments.has(p.id) ||
+        (!!myName && p.created_by === myName) ||
+        (managerDisciplines.length > 0 && splitDisciplines(p.discipline as string).some((d) => managerDisciplines.includes(d)))
+      )
     }
     if (isLead) { // Team Lead (Manager handled above) → created or assigned
       return projects.filter((p) => myAssignments.has(p.id) || (!!myName && p.created_by === myName))
     }
     return projects.filter((p) => myAssignments.has(p.id))
-  }, [projects, isCompanyAdmin, isManager, isLead, myAssignments, myDiscipline, myName])
+  }, [projects, isCompanyAdmin, isManager, isLead, myAssignments, managerDisciplines, myName])
+  const managerScopeIssue = isManager && !isCompanyAdmin && projects.length > 0 && scopedProjects.length === 0
+    ? managerDisciplines.length === 0
+      ? 'Your Manager profile has no discipline in this backend. Add Architecture, Structural, MEP, or assign projects to this manager.'
+      : `No local projects match your Manager discipline (${managerDisciplines.join(', ')}) and no projects are assigned to you.`
+    : ''
 
   // Archived projects are hidden from active views unless "Show archived" is on.
   const archivedCount = useMemo(() => scopedProjects.filter((p) => p.archived).length, [scopedProjects])
@@ -373,7 +382,7 @@ function Shell() {
           {feature === 'empDash' && empDashMember ? (
             <EmployeeDashboard member={empDashMember} onSelect={setSelectedId} onBack={closeFeature} />
           ) : feature === 'alloc' ? (
-            <AllocationHub projects={visibleProjects} onClose={closeFeature} onToast={showToast} onChanged={loadAssignments} />
+            <AllocationHub projects={visibleProjects} onClose={closeFeature} onToast={showToast} onChanged={() => { loadAssignments(); refreshData() }} />
           ) : feature === 'workAlloc' ? (
             <AllocationModal projects={visibleProjects} onClose={closeFeature} onToast={showToast} />
           ) : feature === 'taskAlloc' ? (
@@ -401,7 +410,9 @@ function Shell() {
                 </div>
                 <h1>TOS Tracker</h1>
                 <p>Track RFIs, queries, dispatches, tasks, WIP, QA/QC and timesheets for every project — with members, reminders and CSV export.</p>
-                {isLead ? (
+                {managerScopeIssue ? (
+                  <p className="welcome-hint">{managerScopeIssue}</p>
+                ) : isLead ? (
                   <div className="new-proj-group new-proj-center">
                     <button className="btn btn-primary" onClick={() => setFeature('quote')} title="Quote & create a Miscellaneous project"><Icon name="quote" size={16} /> Miscellaneous (quote)</button>
                     <div className="new-proj-row">
@@ -429,7 +440,7 @@ function Shell() {
           {/* Feature windows dock into the main area (sidebar + topbar stay visible),
               matching the Work/Task Allocation footprint when full-page mode is on.
               One slot only: opening another swaps it in; ← Back returns here. */}
-          {feature === 'assign' && <AssignmentsModal projects={projects} onClose={closeFeature} onToast={showToast} onChanged={loadAssignments} />}
+          {feature === 'assign' && <AssignmentsModal projects={projects} onClose={closeFeature} onToast={showToast} onChanged={() => { loadAssignments(); refreshData() }} />}
           {feature === 'talent' && <TalentModal projects={visibleProjects} onClose={closeFeature} onToast={showToast} />}
           {feature === 'bestFit' && <BestFitModal projects={visibleProjects} onClose={closeFeature} />}
           {feature === 'myAlloc' && <MyAllocationModal projects={visibleProjects} onClose={closeFeature} onToast={showToast} />}

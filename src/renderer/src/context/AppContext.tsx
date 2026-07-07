@@ -89,7 +89,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Identity differs by mode: remote = the logged-in user; local = "Acting as".
   const currentMember = isRemote
-    ? members.find((m) => m.id === authUser?.mid) ?? null
+    ? members.find((m) => m.id === authUser?.mid) ??
+      members.find((m) => m.email.trim().toLowerCase() === (authUser?.email ?? '').trim().toLowerCase()) ??
+      null
     : members.find((m) => m.id === settings?.current_member_id) ?? null
 
   // Role tiers (high→low): Company Admin > Manager > Team Lead > Employee.

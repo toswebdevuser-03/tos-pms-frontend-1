@@ -175,6 +175,7 @@ export interface AuthUser {
   role: MemberRole
   name: string
   email: string
+  discipline?: string
 }
 
 export type AuthState = { mode: 'local' | 'remote'; user: AuthUser | null }
