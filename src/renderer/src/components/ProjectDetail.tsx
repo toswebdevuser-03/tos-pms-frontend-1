@@ -161,7 +161,6 @@ export default function ProjectDetail({ project, onUpdate, onDelete, onToast, on
           <button key={t} className={`tab-btn${activeTab === t ? ' active' : ''}`} onClick={() => setActiveTab(t)}>
             {TAB_LABEL[t] ?? t}
             {COUNT_TYPES[t] && counts[t] > 0 && <span className="tab-count">{counts[t]}</span>}
-            {!!newCounts[t] && <span className="reminder-pill" title={`${newCounts[t]} unseen update${newCounts[t] === 1 ? '' : 's'}`}>{newCounts[t]}</span>}
           </button>
         ))}
       </div>
