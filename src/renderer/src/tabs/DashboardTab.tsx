@@ -214,55 +214,7 @@ export default function DashboardTab({ projectId, projectName, onToast, quotedHo
         </div>
         )}
 
-        {widgets.forecast && isAdmin && burn.points.length > 0 && (
-          <div className="forecast-card">
-            <div className="forecast-head">
-              <h4><Icon name="trendingUp" size={16} /> Budget Burn-up &amp; Forecast</h4>
-              <span className="forecast-verdict" style={{ color: VERDICT_COLOR[fc.verdict], background: `${VERDICT_COLOR[fc.verdict]}1f` }}>
-                <span className="risk-dot" style={{ background: VERDICT_COLOR[fc.verdict] }} />{VERDICT_LABEL[fc.verdict]}
-              </span>
-            </div>
-            <div className="forecast-body">
-              <div className="forecast-chart"><BurnUp points={burn.points} forecast={fc} /></div>
-              <div className="forecast-stats">
-                <div className="fc-stat">
-                  <span className="fc-lbl">Productive logged</span>
-                  <span className="fc-val">{fc.loggedProductive}h{quotedHours ? ` / ${quotedHours}` : ''}</span>
-                  <span className="fc-sub">{fc.usedPct != null ? `${fc.usedPct}% of quote` : 'no quote set'}</span>
-                </div>
-                <div className="fc-stat">
-                  <span className="fc-lbl">Recent pace</span>
-                  <span className="fc-val">{fc.dailyRate}<span className="fc-unit">h/day</span></span>
-                  <span className="fc-sub">last {fc.windowDays} days</span>
-                </div>
-                {fc.projectedFinal != null && (
-                  <div className="fc-stat">
-                    <span className="fc-lbl">Projected at finish</span>
-                    <span className="fc-val" style={{ color: fc.verdict === 'over' ? VERDICT_COLOR.over : undefined }}>~{fc.projectedFinal}h</span>
-                    <span className="fc-sub">{fc.projectedFinalPct != null ? `${fc.projectedFinalPct}% of quote` : ''}{fc.overBy ? ` · +${fc.overBy}h over` : ''}</span>
-                  </div>
-                )}
-                {quotedHours > 0 && (
-                  <div className="fc-stat">
-                    <span className="fc-lbl">Budget runs out</span>
-                    <span className="fc-val" style={{ color: fc.verdict === 'over' ? VERDICT_COLOR.over : undefined }}>
-                      {fc.remaining != null && fc.remaining <= 0 ? 'Exceeded' : fc.daysToExhaust != null ? `~${fc.daysToExhaust}d` : 'Beyond pace'}
-                    </span>
-                    <span className="fc-sub">{fc.remaining != null && fc.remaining <= 0 ? `${Math.abs(fc.remaining)}h over` : relativeDate(fc.exhaustDate)}</span>
-                  </div>
-                )}
-                {fc.endDate && fc.projectedAtDeadline != null && (
-                  <div className="fc-stat">
-                    <span className="fc-lbl">At target end date</span>
-                    <span className="fc-val">~{fc.projectedAtDeadline}h</span>
-                    <span className="fc-sub">{fc.projectedPctAtDeadline != null ? `${fc.projectedPctAtDeadline}% of quote` : ''}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-            {quotedHours <= 0 && <div className="forecast-hint"><Icon name="help" size={13} /> Set the project's quoted hours (edit the project) to unlock budget forecasting.</div>}
-          </div>
-        )}
+
 
         {widgets.charts && (
         <div className="chart-grid">
