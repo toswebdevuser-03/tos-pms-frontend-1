@@ -131,6 +131,11 @@ export function quoteBody(q: Draft): string {
     return html
   }
   const imgBlock = (src?: string): string => (src ? `<img class="q-img" src="${src}" alt=""/>` : '')
+  const wordImgBlock = (src?: string): string => {
+    if (!src) return ''
+    // Word-compatible image embedding: use inline data URI with style constraints
+    return `<div style="margin:6px 0 14px 0;"><img src="${src}" style="max-width:100%;max-height:90mm;border:1px solid #cfcfcf;display:block;" alt=""/></div>`
+  }
   const { project, qc } = computeHours(q)
 
   const head = [
@@ -179,11 +184,95 @@ export function quoteBody(q: Draft): string {
 
 // Word-optimised HTML: MS Office namespaces + A4 section so the .doc opens cleanly
 // in Microsoft Word (proper margins, no on-screen shadow/fixed width).
+// Uses Word-compatible image embedding for proper rendering.
 export function wordHtml(q: Draft): string {
+  // Word-specific body rendering that handles images correctly
+  const row = (label: string, val: string): string => (String(val ?? '').trim() ? `<tr><th>${label}</th><td>${val}</td></tr>` : '')
+  const line = (label: string, val?: string, multiline = false): string => {
+    const v = String(val ?? '').trim()
+    return v ? `<p class="q-line"><span class="q-lbl">${label}:</span> ${multiline ? ml(v) : esc(v)}</p>` : ''
+  }
+  const MARKER_RE = /^\s*(?:[•●○◦▪▫‣·⁃∙]|[-*–—]\s|\d+[.)]\s)/
+  const stripMarker = (s: string): string => {
+    let out = s, prev = ''
+    while (out !== prev) {
+      prev = out
+      out = out.replace(/^\s*(?:[•●○◦▪▫‣·⁃∙]\s*|[-*–—]\s+|\d+[.)]\s+)/, '')
+    }
+    return out.trim()
+  }
+  const field = (label: string, val?: string, listy = false): string => {
+    const raw = String(val ?? '').trim()
+    if (!raw) return ''
+    const rawLines = raw.split('\n').map((s) => s.trim()).filter(Boolean)
+    const hasMarker = rawLines.some((l) => MARKER_RE.test(l))
+    const asBlock = hasMarker || (listy && rawLines.length > 1)
+    if (!asBlock) return `<p class="q-line"><span class="q-lbl">${label}:</span> ${ml(raw)}</p>`
+    const lines = rawLines.map(stripMarker).filter(Boolean)
+    let html = `<p class="q-line"><span class="q-lbl">${label}:</span></p>`
+    let open = false
+    const closeUl = (): void => { if (open) { html += '</ul>'; open = false } }
+    for (const ln of lines) {
+      if (ln.length > 1 && ln.endsWith(':')) { closeUl(); html += `<p class="q-subhead">${esc(ln)}</p>` }
+      else { if (!open) { html += '<ul class="q-list">'; open = true } html += `<li>${esc(ln)}</li>` }
+    }
+    closeUl()
+    return html
+  }
+  // Word-specific image rendering with inline styles
+  const wordImgBlock = (src?: string): string => {
+    if (!src) return ''
+    return `<div style="margin:6px 0 14px 0;"><img src="${src}" style="max-width:100%;max-height:90mm;border:1px solid #cfcfcf;display:block;" alt=""/></div>`
+  }
+  const { project, qc } = computeHours(q)
+
+  const head = [
+    row('Date', esc(niceDate(q.date))),
+    row('Quotation No.', esc(q.quote_no)),
+    row('Client Name', esc(q.client_name)),
+    row('Project Name', esc(q.project_name)),
+    row('Project Hours', project ? String(project) : ''),
+    row('QC Hours', qc ? String(qc) : '')
+  ].join('')
+
+  const scope = [
+    line('Type of Building', q.type_of_building),
+    line('Disciplines', q.disciplines),
+    line(q.lod_type || 'LOD', q.lod),
+    line('Tolerance', q.tolerance),
+    line('Type of Project', q.type_of_project),
+    line('Area of the building overall', q.area),
+    line('Units of measurement', q.units),
+    line('Software to be used', q.software),
+    line('Description', q.description, true),
+    wordImgBlock(q.description_image),
+    field('Inputs Received', q.inputs_received, true),
+    field('Output Deliverable', q.output_deliverable, true),
+    field('Inputs Required', q.inputs_required, true),
+    field('Exclusions', q.exclusions),
+    field('Note', q.note),
+    wordImgBlock(q.note_image)
+  ].join('')
+
+  const scopeSection = scope ? `<div class="q-scope-title">Detailed Scope of work:</div>${scope}` : ''
+  const refImg = q.image ? `<div class="q-scope-title">Reference Image:</div>${wordImgBlock(q.image)}` : ''
+  const addendumTag = q.parent_quote_id ? `<p class="q-line"><span class="q-lbl">Additional Quote for Project:</span> ${esc(q.project_name)}</p>` : ''
+
+  const body = `<div class="q-doc">
+    <div class="q-head">
+      <img class="q-logo" src="${TOS_LOGO}" alt="Tesla Outsourcing Services"/>
+      <div class="q-addr"><strong>Tesla Outsourcing Services</strong><br/>10th Floor Salister Bldg<br/>Rajpath Rangoli Road<br/>Behind Rajpath Club<br/>Ahmedabad &ndash; Gujarat | India</div>
+    </div>
+    <table class="q-meta"><tbody>${head}</tbody></table>
+    ${addendumTag}
+    ${scopeSection}
+    ${refImg}
+  </div>`
+
   return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">` +
     `<head><meta charset="utf-8"/><title>Quotation ${esc(q.quote_no) || ''}</title>` +
-    `<style>${QUOTE_CSS}\n@page Section1 { size: 210mm 297mm; margin: 14mm; }\ndiv.Section1 { page: Section1; }\n.q-doc{box-shadow:none;width:auto;padding:0;margin:0}\n.q-img{max-width:100%}</style></head>` +
-    `<body><div class="Section1">${quoteBody(q)}</div></body></html>`
+    `<style>${QUOTE_CSS}\n@page Section1 { size: 210mm 297mm; margin: 14mm; }\ndiv.Section1 { page: Section1; }\n.q-doc{box-shadow:none;width:auto;padding:0;margin:0}\n.q-img{max-width:100%}\nimg{display:block}</style></head>` +
+    `<body><div class="Section1">${body}</div></body></html>`
 }
 
 export function fullHtml(q: Draft): string {
