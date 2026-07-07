@@ -25,7 +25,8 @@ export default function Login() {
     const res = await login(email.trim(), password)
     setBusy(false)
     if (!res.ok) { setError(res.error || 'Login failed'); return }
-    if (res.mustReset) { setResetMode(true); return }
+    // Password reset on first login is now hidden - users go directly to app
+    // if (res.mustReset) { setResetMode(true); return }
     await refreshAuth()
   }
 
