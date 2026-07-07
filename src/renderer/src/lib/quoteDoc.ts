@@ -9,6 +9,14 @@ export const esc = (s?: string): string =>
   String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 export const ml = (s?: string): string => esc(s).replace(/\n/g, '<br/>')
 export const today = (): string => new Date().toISOString().slice(0, 10)
+
+// Convert base64 data URI to safe format for Word - embed directly with inline styles
+const wordSafeImg = (dataUri?: string): string => {
+  if (!dataUri) return ''
+  return `<img src="${dataUri}" style="max-width:100%;max-height:90mm;border:1px solid #cfcfcf;display:block;margin:6px 0 14px 0;" alt=""/>`
+}
+
+export const today = (): string => new Date().toISOString().slice(0, 10)
 export const niceDate = (d?: string): string => {
   if (!d) return ''
   const dt = new Date(d + 'T00:00:00')
@@ -84,6 +92,7 @@ export const QUOTE_CSS = `
 .q-doc .q-list li{margin:1px 0}
 .q-doc .q-subhead{font-weight:700;margin:6px 0 2px}
 .q-doc .q-img{max-width:100%;max-height:90mm;display:block;margin:6px 0 14px;border:1px solid #cfcfcf}
+.q-doc img{max-width:100%;height:auto;display:block}
 `
 
 export function quoteBody(q: Draft): string {
@@ -260,7 +269,7 @@ export function wordHtml(q: Draft): string {
 
   const body = `<div class="q-doc">
     <div class="q-head">
-      <img class="q-logo" src="${TOS_LOGO}" alt="Tesla Outsourcing Services"/>
+      <img class="q-logo" src="${TOS_LOGO}" alt="Tesla Outsourcing Services" style="height:54px;width:auto;display:block;margin:0 auto 10px"/>
       <div class="q-addr"><strong>Tesla Outsourcing Services</strong><br/>10th Floor Salister Bldg<br/>Rajpath Rangoli Road<br/>Behind Rajpath Club<br/>Ahmedabad &ndash; Gujarat | India</div>
     </div>
     <table class="q-meta"><tbody>${head}</tbody></table>
@@ -269,9 +278,9 @@ export function wordHtml(q: Draft): string {
     ${refImg}
   </div>`
 
-  return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">` +
+  return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns:v="urn:schemas-microsoft-com:vml" xmlns="http://www.w3.org/1999/xhtml">` +
     `<head><meta charset="utf-8"/><title>Quotation ${esc(q.quote_no) || ''}</title>` +
-    `<style>${QUOTE_CSS}\n@page Section1 { size: 210mm 297mm; margin: 14mm; }\ndiv.Section1 { page: Section1; }\n.q-doc{box-shadow:none;width:auto;padding:0;margin:0}\n.q-img{max-width:100%}\nimg{display:block}</style></head>` +
+    `<style>${QUOTE_CSS}\n@page Section1 { size: 210mm 297mm; margin: 14mm; }\ndiv.Section1 { page: Section1; }\n.q-doc{box-shadow:none;width:auto;padding:0;margin:0}\n.q-img{max-width:100%;height:auto}\nimg{display:block;height:auto}</style></head>` +
     `<body><div class="Section1">${body}</div></body></html>`
 }
 
