@@ -30,7 +30,7 @@ export default function AllocationHub({ projects, onClose, onToast, onChanged }:
           <div className="exec-tabs" style={{ margin: 0 }}>
             {isLead && <button className={`exec-tab${tab === 'work' ? ' active' : ''}`} onClick={() => setTab('work')}><Icon name="calendar" size={16} /> Work allocation</button>}
             <button className={`exec-tab${tab === 'task' ? ' active' : ''}`} onClick={() => setTab('task')}><Icon name="checkSquare" size={16} /> Task allocation</button>
-            {isLead && <button className={`exec-tab${tab === 'assign' ? ' active' : ''}`} onClick={() => setTab('assign')}><Icon name="pin" size={16} /> Assign projects</button>}
+            {isLead && <button className={`exec-tab${tab === 'assign' ? ' active' : ''}`} onClick={() => setTab('assign')}><Icon name="pin" size={16} /> Include </button>}
           </div>
         </div>
       </div>
