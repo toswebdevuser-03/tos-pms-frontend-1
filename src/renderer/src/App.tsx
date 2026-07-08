@@ -59,7 +59,7 @@ const CREATE_FIELDS: FieldDef[] = [
 ]
 
 function Shell() {
-  const { members, currentMember, setCurrentMember, isCompanyAdmin, isManager, isLead, isAdmin, authMode, authUser, logout, settings } = useApp()
+  const { members, currentMember, setCurrentMember, isCompanyAdmin, isManager, isLead, isAdmin, authMode, authUser, logout, settings, authChecked } = useApp()
   const { refreshAll: refreshData } = useData()
   const [projects, setProjects] = useState<Project[]>([])
   // Restore the last view across refreshes: a feature window takes priority,
@@ -155,8 +155,26 @@ function Shell() {
     setMyAssignments(new Set(ids))
   }, [currentMember, authUser?.mid])
 
-  useEffect(() => { loadProjects(); loadStatuses(); loadReminderCount() }, [loadProjects, loadStatuses, loadReminderCount])
-  useEffect(() => { loadAssignments() }, [loadAssignments])
+  // Only load protected data once the auth state is known.
+  useEffect(() => {
+    if (authMode === 'local') {
+      loadProjects(); loadStatuses(); loadReminderCount();
+      return
+    }
+
+    // Remote mode: wait until we've checked auth and a user is present.
+    if (!authChecked) return
+    if (!authUser) return
+
+    loadProjects(); loadStatuses(); loadReminderCount()
+  }, [loadProjects, loadStatuses, loadReminderCount, authMode, authChecked, authUser])
+
+  useEffect(() => {
+    if (authMode === 'local') { loadAssignments(); return }
+    if (!authChecked) return
+    if (!authUser) return
+    loadAssignments()
+  }, [loadAssignments, authMode, authChecked, authUser])
   // Opening a project closes any feature window so the project shows through.
   useEffect(() => { if (selectedId != null) setFeature(null) }, [selectedId])
   // Persist the current view so a browser refresh restores it (not the dashboard).

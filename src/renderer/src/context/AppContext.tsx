@@ -14,7 +14,7 @@ interface AppContextValue {
   refreshSettings: () => Promise<void>
   setCurrentMember: (id: number | null) => Promise<void>
   // Auth (remote mode)
-  authMode: 'local' | 'remote'
+  authMode: 'local' | 'remote' | null
   authUser: AuthUser | null
   authChecked: boolean
   needsLogin: boolean
@@ -35,7 +35,7 @@ export function useApp(): AppContextValue {
 export function AppProvider({ children }: { children: ReactNode }) {
   const [members, setMembers] = useState<Member[]>([])
   const [settings, setSettings] = useState<Settings | null>(null)
-  const [authMode, setAuthMode] = useState<'local' | 'remote'>('local')
+  const [authMode, setAuthMode] = useState<'local' | 'remote' | null>(null)
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
   const [authChecked, setAuthChecked] = useState(false)
 
@@ -74,11 +74,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setAuthUser(null)
   }, [])
 
-  // Initial load. In remote mode we still load members/settings once authed.
+  // Initial load: check if user is already authenticated (via stored token).
+  // We set authMode to null until `refreshAuth` completes to avoid assuming
+  // `local` and making protected API calls that cause 401s on startup.
   useEffect(() => { refreshAuth() }, [refreshAuth])
+
+  // Fetch protected data only after authentication is complete.
+  // For local mode: fetch immediately (no auth required).
+  // For remote mode: only fetch after authChecked=true AND user is logged in.
   useEffect(() => {
-    if (authMode === 'local' || authUser) { refreshMembers(); refreshSettings() }
-  }, [authMode, authUser, refreshMembers, refreshSettings])
+    if (authMode === null) return // Still unknown — wait for refreshAuth
+
+    if (authMode === 'local') {
+      refreshMembers();
+      refreshSettings();
+      return
+    }
+
+    // Remote mode: gate on both authChecked and authUser
+    if (!authChecked) return
+    if (!authUser) return
+
+    // Auth is valid and user is logged in, fetch protected data
+    refreshMembers()
+    refreshSettings()
+  }, [authMode, authChecked, authUser])
+
 
   const setCurrentMember = useCallback(async (id: number | null) => {
     const res = await window.api.settings.update({ current_member_id: id })

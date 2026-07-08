@@ -89,8 +89,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   // Load once authenticated (mirrors AppContext's gating).
   useEffect(() => {
-    if (authMode === 'local' || authUser) refreshAll()
+    if (authMode === 'local') {
+      refreshAll()
+      return
+    }
+
+    // authUser can still be null during the initial refreshAuth() round-trip.
+    if (!authUser) return
+
+    refreshAll()
   }, [authMode, authUser, refreshAll])
+
 
   // Real-time: refresh only the slice an event touches.
   useEffect(() => {
