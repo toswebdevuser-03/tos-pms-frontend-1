@@ -215,3 +215,5 @@ export async function attachmentRaw(storedPath: string): Promise<{ buffer: Buffe
   const ab = await res.arrayBuffer()
   return { buffer: Buffer.from(ab), contentType: res.headers.get('content-type') || 'application/octet-stream' }
 }
+
+
