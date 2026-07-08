@@ -16,7 +16,7 @@ const wordSafeImg = (dataUri?: string): string => {
   return `<img src="${dataUri}" style="max-width:100%;max-height:90mm;border:1px solid #cfcfcf;display:block;margin:6px 0 14px 0;" alt=""/>`
 }
 
-export const today = (): string => new Date().toISOString().slice(0, 10)
+
 export const niceDate = (d?: string): string => {
   if (!d) return ''
   const dt = new Date(d + 'T00:00:00')

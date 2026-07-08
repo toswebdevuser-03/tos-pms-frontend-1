@@ -117,7 +117,24 @@ export async function exportRfiWord(rows: Row[], projectName: string, fileName: 
     })
   })
 
-  const doc = new Document({ sections: [{ properties: { page: { margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 } } } }, children }] })
+  // const doc = new Document({ sections: [{ properties: { page: { margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 } } } }, children }] })
+     const doc = new Document({
+  sections: [
+    {
+      properties: {
+        page: {
+          margin: {
+            top: 1440,
+            right: 1440,
+            bottom: 1440,
+            left: 1440,
+          },
+        },
+      },
+      children,
+    },
+  ],
+})
   await downloadWordDocx(fileName, doc)
 }
 
