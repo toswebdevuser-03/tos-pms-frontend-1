@@ -13,7 +13,7 @@ import { buildBurnUp, forecast, VERDICT_LABEL, VERDICT_COLOR, relativeDate } fro
 import { buildProjectReportHtml } from '../report'
 import { num, productiveHours as productiveOfRow } from '../lib/hours'
 import { useEscapeKey } from '../lib/useEscapeKey'
-import { useItems } from '../hooks/useItems'
+import { useProjectDashboard } from '../hooks/useProjectDashboard'
 import { useProjectMembersByProject } from '../hooks/useProjectMembers'
 
 
@@ -56,22 +56,33 @@ function StatCard({ icon, label, value, sub, accent, onClick }: { icon: IconName
 export default function DashboardTab({ projectId, projectName, onToast, quotedHours = 0, onNavigate, project, overall }: Props) {
   const { isAdmin } = useApp() // Project Lead+ may see quoted/budget; Employees see only logged (exhausted) hrs
 
-  const { data: rfi = [], isLoading: rfiLoading } = useItems('rfi', projectId)
-  const { data: query = [], isLoading: queryLoading } = useItems('query', projectId)
-  const { data: dispatch = [], isLoading: dispatchLoading } = useItems('dispatch', projectId)
-  const { data: wip = [], isLoading: wipLoading } = useItems('wip', projectId)
-  const { data: qc = [], isLoading: qcLoading } = useItems('qc', projectId)
-  const { data: task = [], isLoading: taskLoading } = useItems('task', projectId)
-  const { data: timesheetRows = [], isLoading: timesheetLoading } = useItems('timesheet', projectId)
-  const { data: standard = [], isLoading: standardLoading } = useItems('standard', projectId)
-  const { data: scope = [], isLoading: scopeLoading } = useItems('scope', projectId)
-  const { data: input = [], isLoading: inputLoading } = useItems('input', projectId)
+  // const { data: rfi = [], isLoading: rfiLoading } = useItems('rfi', projectId)
+  // const { data: query = [], isLoading: queryLoading } = useItems('query', projectId)
+  // const { data: dispatch = [], isLoading: dispatchLoading } = useItems('dispatch', projectId)
+  // const { data: wip = [], isLoading: wipLoading } = useItems('wip', projectId)
+  // const { data: qc = [], isLoading: qcLoading } = useItems('qc', projectId)
+  // const { data: task = [], isLoading: taskLoading } = useItems('task', projectId)
+  // const { data: timesheetRows = [], isLoading: timesheetLoading } = useItems('timesheet', projectId)
+  // const { data: standard = [], isLoading: standardLoading } = useItems('standard', projectId)
+  // const { data: scope = [], isLoading: scopeLoading } = useItems('scope', projectId)
+  // const { data: input = [], isLoading: inputLoading } = useItems('input', projectId)
+  const { data: dash, isLoading: dashLoading } = useProjectDashboard(projectId)
+  const rfi = dash?.rfi ?? []
+  const query = dash?.query ?? []
+  const dispatch = dash?.dispatch ?? []
+  const wip = dash?.wip ?? []
+  const qc = dash?.qc ?? []
+  const task = dash?.task ?? []
+  const timesheetRows = dash?.timesheet ?? []
+  const standard = dash?.standard ?? []
+  const scope = dash?.scope ?? []
+  const input = dash?.input ?? []
 
   // Keep member list in cache, scoped to this project.
   const { data: members = [] } = useProjectMembersByProject(projectId)
 
-  const loading = rfiLoading || queryLoading || dispatchLoading || wipLoading || qcLoading || taskLoading || timesheetLoading || standardLoading || scopeLoading || inputLoading
-
+  // const loading = rfiLoading || queryLoading || dispatchLoading || wipLoading || qcLoading || taskLoading || timesheetLoading || standardLoading || scopeLoading || inputLoading
+  const loading = dashLoading
   // Pending manual timesheet entries don't count until a Team Lead approves them.
   const ts = timesheetRows.filter((t: Record<string, unknown>) => !t.pending)
 

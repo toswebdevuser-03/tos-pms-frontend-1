@@ -63,13 +63,7 @@ export default function StatusTab({ projectId, onToast }: Props) {
   const missingFeedback = useMemo(
     () => members.filter((m) => roleRank((m as any).role) < RANK_MANAGER && !feedback.some((f) => String(f.member_id) === String((m as any).id))),
     [members, feedback]
-
   )
-
-
-
-
-
 
   const handleSave = async () => {
     if (overall === 'Closed' && missingFeedback.length > 0) {

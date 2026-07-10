@@ -15,6 +15,9 @@ export const queryKeyFactory = {
   projectCounts: {
     detail: (id: number) => ['projects', id, 'counts'] as const,
   },
+  projectDashboard: {
+    detail: (id: number) => ['projects', id, 'dashboard'] as const,
+  },
   statuses: {
     all: () => ['statuses'] as const,
   },

@@ -11,7 +11,8 @@
     "build:desktop": "electron-vite build",
     "preview:desktop": "electron-vite preview",
     "pack": "npm run build:desktop && electron-builder --dir",
-    "dist": "npm run build:desktop && electron-builder"
+    "dist": "npm run build:desktop && electron-builder",
+    "lint": "eslint ."
   },
   "keywords": [],
   "author": "Tesla Outsourcing Services",
@@ -37,11 +38,18 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/ws": "^8.18.1",
+    "@typescript-eslint/eslint-plugin": "^8.63.0",
+    "@typescript-eslint/parser": "^8.63.0",
     "@vitejs/plugin-react": "^4.3.4",
     "electron": "^33.4.0",
     "electron-builder": "^25.1.8",
     "electron-vite": "^2.3.0",
+    "eslint": "^9.7.0",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.7.0",
     "typescript": "^5.7.3",
+    "typescript-eslint": "^8.63.0",
     "vite": "^5.4.0"
   },
   "dependencies": {
