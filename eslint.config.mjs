@@ -2,9 +2,9 @@ import js from "@eslint/js";
 import globals from "globals";
 import tseslint from "typescript-eslint";
 import react from "eslint-plugin-react";
+import reactHooks from "eslint-plugin-react-hooks";
 
 export default [
-  // Ignore build output and dependencies
   {
     ignores: [
       "out/**",
@@ -16,13 +16,15 @@ export default [
   },
 
   js.configs.recommended,
-
   ...tseslint.configs.recommended,
-
   react.configs.flat.recommended,
 
   {
     files: ["**/*.{js,mjs,cjs,jsx,ts,tsx}"],
+
+    plugins: {
+      "react-hooks": reactHooks,
+    },
 
     languageOptions: {
       globals: {
@@ -40,6 +42,10 @@ export default [
     rules: {
       "react/react-in-jsx-scope": "off",
       "react/jsx-uses-react": "off",
+
+      // React Hooks rules
+      "react-hooks/rules-of-hooks": "error",
+      "react-hooks/exhaustive-deps": "warn",
     },
   },
 ];
