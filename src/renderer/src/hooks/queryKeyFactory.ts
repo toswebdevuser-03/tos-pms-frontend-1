@@ -10,6 +10,10 @@ export const queryKeyFactory = {
   projects: {
     all: () => ['projects'] as const,
     detail: (id: number) => ['projects', id] as const,
+    counts: (id: number) => ['projects', id, 'counts'] as const,
+  },
+  projectCounts: {
+    detail: (id: number) => ['projects', id, 'counts'] as const,
   },
   statuses: {
     all: () => ['statuses'] as const,

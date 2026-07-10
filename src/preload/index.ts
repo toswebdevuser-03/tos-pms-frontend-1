@@ -7,8 +7,12 @@ contextBridge.exposeInMainWorld('api', {
   projects: {
     getAll: () => ipcRenderer.invoke('projects:getAll'),
     statuses: () => ipcRenderer.invoke('projects:statuses'),
+    // project badge counts
+    counts: (projectId: number) => ipcRenderer.invoke('projects:counts', { projectId }),
     create: (data: { name: string; client: string; location: string; discipline: string; quoted_hours: string; start_date?: string; end_date?: string }) =>
       ipcRenderer.invoke('projects:create', data),
+
+
     update: (data: { id: number; name: string; client: string; location: string; discipline: string; quoted_hours: string; start_date?: string; end_date?: string }) =>
       ipcRenderer.invoke('projects:update', data),
     delete: (id: number) => ipcRenderer.invoke('projects:delete', { id }),

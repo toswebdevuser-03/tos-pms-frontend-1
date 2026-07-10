@@ -30,6 +30,7 @@ const COUNT_TYPES: Record<string, string> = {
   QC: 'qc', Meetings: 'meeting', Timesheet: 'timesheet', Standards: 'standard', Feedback: 'feedback'
 }
 
+
 // Which tab shows the "unseen updates" pill for each update kind.
 const KIND_TAB: Record<ProjectUpdate['kind'], Tab> = { task: 'Tasks', rfi: 'RFI/Queries', dispatch: 'Dispatch', status: 'Status' }
 
@@ -72,6 +73,7 @@ export default function ProjectDetail({ project, onUpdate, onDelete, onToast, on
 
   // Per-tab unseen-update counts for this project (Tasks/RFI/Dispatch/Status), so the
   // tab bar shows where the new activity is instead of only a lump sum elsewhere.
+
   const newCounts = useMemo(() => {
     const m: Partial<Record<Tab, number>> = {}
     for (const u of updates) {
@@ -84,17 +86,21 @@ export default function ProjectDetail({ project, onUpdate, onDelete, onToast, on
 
   const loadMeta = useCallback(async () => {
     const result: Record<string, number> = {}
-    await Promise.all(
-      Object.entries(COUNT_TYPES).map(async ([tab, type]) => {
-        const res = await window.api.items.getByProject(project.id, type)
-        if (res.ok) result[tab] = (res.data as unknown[]).length
-      })
-    )
+
+    // Use a single projects:counts call instead of N x items:getByProject.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const projectsApi: any = window.api.projects
+    const cres = projectsApi?.counts ? await projectsApi.counts(project.id) : null
+    if (cres?.ok && cres?.data) Object.assign(result, cres.data)
+
+
     setCounts(result)
+
     const sres = await window.api.items.getByProject(project.id, 'status')
     if (sres.ok && (sres.data as ProjectStatus[]).length > 0) setOverall((sres.data as ProjectStatus[])[0].overall)
     else setOverall('')
   }, [project.id])
+
 
   // No remount refreshKey logic; WS + TanStack Query invalidation updates tab data.
   useEffect(() => { loadMeta() }, [loadMeta])
