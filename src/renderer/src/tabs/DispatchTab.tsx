@@ -18,8 +18,14 @@ interface Props {
 const STATUS = ['Scheduled', 'In Progress', 'Dispatched', 'Acknowledged', 'Hold']
 
 export default function DispatchTab({ projectId, projectName, onToast }: Props) {
-  const { isLead } = useApp() // project-setup section: Team Lead+ only
-  const { data: members = [] } = useProjectMembersByProject(projectId)
+  const { isLead, members: allMembers } = useApp() // project-setup section: Team Lead+ only
+  const { data: assignedLinks = [] } = useProjectMembersByProject(projectId)
+
+  const members = useMemo(() => {
+    const ids = new Set(assignedLinks.map((l) => l.member_id))
+    return allMembers.filter((m) => ids.has(m.id))
+  }, [allMembers, assignedLinks])
+
 
   const nameById = useMemo(() => memberNameMap(members), [members])
 

@@ -24,9 +24,10 @@ interface Props {
 type Row = Record<string, unknown>
 
 export default function TasksTab({ projectId, projectName, onToast }: Props) {
-  const { isAdmin, isManager, currentMember } = useApp()
+  const { isAdmin, isManager, currentMember, members: allMembers } = useApp()
   const { projects, refreshTasks } = useData()
   const queryClient = useQueryClient()
+
   // Task discipline options = this project's disciplines (fall back to the full list).
   const discOptions = useMemo(() => {
     const d = splitDisciplines(projects.find((p) => p.id === projectId)?.discipline || '')
@@ -36,7 +37,13 @@ export default function TasksTab({ projectId, projectName, onToast }: Props) {
   const [view, setView] = useState<'list' | 'board'>('list')
   const [confirmDelete, setConfirmDelete] = useState<Row | null>(null)
   const { data: rows = [] } = useItems('task', projectId)
-  const { data: members = [] } = useProjectMembersByProject(projectId)
+  const { data: assignedLinks = [] } = useProjectMembersByProject(projectId)
+
+  const members = useMemo(() => {
+    const ids = new Set(assignedLinks.map((l) => l.member_id))
+    return allMembers.filter((m) => ids.has(m.id))
+  }, [allMembers, assignedLinks])
+
   const refreshRows = async (): Promise<void> => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: queryKeyFactory.items.byProject('task', projectId) }),

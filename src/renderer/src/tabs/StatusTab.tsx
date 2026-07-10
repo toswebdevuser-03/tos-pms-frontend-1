@@ -26,13 +26,23 @@ interface Props {
 }
 
 export default function StatusTab({ projectId, onToast }: Props) {
-  const { isLead } = useApp() // project status is project setup: Team Lead+ may edit; others view only
+  const { isLead, members: allMembers } = useApp() // project status is project setup: Team Lead+ may edit; others view only
+
   const queryClient = useQueryClient()
   const { refreshStatuses, refreshTasks } = useData()
-  const { data: statusRows = [] } = useItems('status', projectId)
-  const { data: tasks = [] } = useItems('task', projectId)
+  const { data: statusRows = [] } = useItems('status', projectId) as { data: any[] }
+
+  const { data: tasks = [] } = useItems('task', projectId) as { data: any[] }
+
   const { data: feedback = [] } = useItems('feedback', projectId)
-  const { data: members = [] } = useProjectMembersByProject(projectId)
+
+  const { data: assignedLinks = [] } = useProjectMembersByProject(projectId)
+
+  const members = useMemo(() => {
+    const ids = new Set(assignedLinks.map((l) => l.member_id))
+    return (allMembers as Member[]).filter((m) => ids.has(m.id))
+  }, [assignedLinks, allMembers])
+
   const [status, setStatus] = useState<ProjectStatus | null>(null)
   const [overall, setOverall] = useState('On-going')
   const [notes, setNotes] = useState('')
@@ -51,9 +61,15 @@ export default function StatusTab({ projectId, onToast }: Props) {
   // A project can only be Closed once every assigned member has feedback — EXCEPT
   // Managers and above, whose feedback is not required to close a project.
   const missingFeedback = useMemo(
-    () => members.filter((m) => roleRank(m.role) < RANK_MANAGER && !feedback.some((f) => String(f.member_id) === String(m.id))),
+    () => members.filter((m) => roleRank((m as any).role) < RANK_MANAGER && !feedback.some((f) => String(f.member_id) === String((m as any).id))),
     [members, feedback]
+
   )
+
+
+
+
+
 
   const handleSave = async () => {
     if (overall === 'Closed' && missingFeedback.length > 0) {

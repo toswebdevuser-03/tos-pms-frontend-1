@@ -20,8 +20,14 @@ interface Props {
 const RESULTS = ['Pending', 'In Progress', 'Pass', 'Fail']
 
 export default function QCTab({ projectId, projectName, onToast }: Props) {
-  const { isLead } = useApp()
-  const { data: members = [] } = useProjectMembersByProject(projectId)
+  const { isLead, members: allMembers } = useApp()
+  const { data: assignedLinks = [] } = useProjectMembersByProject(projectId)
+
+  const members = useMemo(() => {
+    const ids = new Set(assignedLinks.map((l) => l.member_id))
+    return allMembers.filter((m) => ids.has(m.id))
+  }, [allMembers, assignedLinks])
+
 
   const nameById = useMemo(() => memberNameMap(members), [members])
   const copyPath = async (p: string): Promise<void> => {

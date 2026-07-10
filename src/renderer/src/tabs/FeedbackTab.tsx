@@ -27,11 +27,18 @@ export function overallOf(r: Record<string, unknown>): number {
 
 export default function FeedbackTab({ projectId, projectName, onToast }: Props) {
   const { isAdmin, currentMember, members: allMembers } = useApp()
-  const { data: members = [] } = useProjectMembersByProject(projectId)
+  const { data: assignedLinks = [] } = useProjectMembersByProject(projectId)
+
+  const members = useMemo(() => {
+    const ids = new Set(assignedLinks.map((l) => l.member_id))
+    return allMembers.filter((m) => ids.has(m.id))
+  }, [allMembers, assignedLinks])
+
 
   const nameById = useMemo(() => memberNameMap(allMembers), [allMembers])
   // Higher roles give feedback ABOUT lower roles, and can only SEE feedback about
   // lower roles. Rank of a member id (from the global directory).
+
   const myRank = roleRank(currentMember?.role)
   const rankOfMember = (id: unknown): number => roleRank(allMembers.find((m) => String(m.id) === String(id))?.role)
   const lowerMembers = useMemo(() => members.filter((m) => roleRank(m.role) < myRank), [members, myRank])
