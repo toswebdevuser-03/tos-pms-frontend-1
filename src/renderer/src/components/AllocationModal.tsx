@@ -9,6 +9,7 @@ import { useFilters } from './FilterBar'
 import EmptyState from './EmptyState'
 import Icon from './Icon'
 import { useEscapeKey } from '../lib/useEscapeKey'
+import { useItemsByProjects } from '../hooks/useItems'
 
 interface Props {
   projects: Project[]
@@ -32,24 +33,21 @@ export default function AllocationModal({ projects, onClose, onToast, embedded }
   const { members, isLead } = useApp()
   const { refreshProjectMembers } = useData()
   const [date, setDate] = useState(() => iso(new Date()))
-  const [rowsByProject, setRowsByProject] = useState<Record<number, Row[]>>({})
   const [adding, setAdding] = useState<Project | null>(null)
   const [pickQuery, setPickQuery] = useState('')
   const [drag, setDrag] = useState<{ projectId: number; memberId: string } | null>(null)
   const [overCell, setOverCell] = useState<string | null>(null)
   useEscapeKey(useCallback(() => setAdding(null), []))
 
-  const load = useCallback(async () => {
+  const projectIds = useMemo(() => projects.map((p) => p.id), [projects])
+  const { data: allocationMap = {}, refetch: refetchAllocations } = useItemsByProjects('allocation', projectIds)
+  const rowsByProject = useMemo<Record<number, Row[]>>(() => {
     const map: Record<number, Row[]> = {}
-    await Promise.all(projects.map(async (p) => {
-      const res = await window.api.items.getByProject(p.id, 'allocation')
-      if (res.ok) {
-        map[p.id] = (res.data as Row[]).filter((a) => String(a.date ?? '').slice(0, 10) === date && a.member_id != null && String(a.member_id) !== '')
-      }
-    }))
-    setRowsByProject(map)
-  }, [projects, date])
-  useEffect(() => { load() }, [load])
+    for (const p of projects) {
+      map[p.id] = (allocationMap[p.id] ?? []).filter((a) => String(a.date ?? '').slice(0, 10) === date && a.member_id != null && String(a.member_id) !== '')
+    }
+    return map
+  }, [projects, allocationMap, date])
 
   const memberById = useMemo(() => memberMap(members), [members])
 
@@ -90,7 +88,7 @@ export default function AllocationModal({ projects, onClose, onToast, embedded }
   const removeMember = async (projectId: number, memberId: string): Promise<void> => {
     const ids = (rowsByProject[projectId] ?? []).filter((a) => String(a.member_id) === memberId).map((a) => Number(a.id))
     for (const id of ids) await window.api.items.delete('allocation', id)
-    onToast('Removed from this day'); load()
+    onToast('Removed from this day'); await refetchAllocations()
   }
 
   const addMember = async (projectId: number, memberId: number): Promise<void> => {
@@ -101,7 +99,7 @@ export default function AllocationModal({ projects, onClose, onToast, embedded }
     try { await window.api.projectMembers.assign(projectId, memberId) } catch { /* already a member */ }
     void refreshProjectMembers() // so Task allocation & the member's access reflect it now
     onToast('Allocated for ' + fmtDate(date) + ' · added to project')
-    load()
+    await refetchAllocations()
   }
 
   // Move a member to a different role column for THIS project/day only.
@@ -113,7 +111,7 @@ export default function AllocationModal({ projects, onClose, onToast, embedded }
         hours: r.hours ?? '', note: r.note ?? '', task_id: r.task_id ?? '', role: col
       })
     }
-    onToast(`Moved to ${col} for this project`); load()
+    onToast(`Moved to ${col} for this project`); await refetchAllocations()
   }
 
   const shiftDate = (delta: number): void => { const d = new Date(date + 'T00:00:00'); d.setDate(d.getDate() + delta); setDate(iso(d)) }

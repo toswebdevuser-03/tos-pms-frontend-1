@@ -23,6 +23,14 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke('items:update', { type, ...data }),
     delete: (type: string, id: number) => ipcRenderer.invoke('items:delete', { type, id })
   },
+  all: {
+    tasks: () => ipcRenderer.invoke('all:tasks'),
+    timesheets: () => ipcRenderer.invoke('all:timesheets'),
+    wip: () => ipcRenderer.invoke('all:wip'),
+    dispatches: () => ipcRenderer.invoke('all:dispatches'),
+    qc: () => ipcRenderer.invoke('all:qc'),
+    rfi: () => ipcRenderer.invoke('all:rfi')
+  },
   members: {
     getAll: () => ipcRenderer.invoke('members:getAll'),
     create: (data: { name: string; email: string; role: string; discipline?: string; engagement?: string }) => ipcRenderer.invoke('members:create', data),

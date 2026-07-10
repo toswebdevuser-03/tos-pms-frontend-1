@@ -30,9 +30,8 @@ const s = (v: unknown): string => String(v ?? '')
 export default function CommandPalette({ projects, members, onClose, onNavigate }: Props) {
   // Tasks come from the shared cross-project data layer (one cached load) instead of
   // a per-project fetch; RFIs/Queries still fetch per project (not in the data layer).
-  const { tasksByProject } = useData()
+  const { tasksByProject, rfisByProject } = useData()
   const [q, setQ] = useState('')
-  const [items, setItems] = useState<{ rfis: Row[]; queries: Row[] }>({ rfis: [], queries: [] })
   const [active, setActive] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -40,26 +39,10 @@ export default function CommandPalette({ projects, members, onClose, onNavigate 
 
   // Tasks across the currently-visible projects (scoped exactly like the per-project loop).
   const tasks = useMemo<Row[]>(() => projects.flatMap((p) => tasksByProject(p.id)), [projects, tasksByProject])
+  const rfis = useMemo<Row[]>(() => projects.flatMap((p) => rfisByProject(p.id).map((x) => ({ ...x, project_id: p.id }))), [projects, rfisByProject])
 
   useEffect(() => { inputRef.current?.focus() }, [])
 
-  // Load cross-project RFIs/Queries once on open.
-  useEffect(() => {
-    let alive = true
-    ;(async () => {
-      const rfis: Row[] = [], queries: Row[] = []
-      await Promise.all(projects.map(async (p) => {
-        const [r, qq] = await Promise.all([
-          window.api.items.getByProject(p.id, 'rfi'),
-          window.api.items.getByProject(p.id, 'query')
-        ])
-        if (r.ok) (r.data as Row[]).forEach((x) => rfis.push({ ...x, project_id: p.id }))
-        if (qq.ok) (qq.data as Row[]).forEach((x) => queries.push({ ...x, project_id: p.id }))
-      }))
-      if (alive) setItems({ rfis, queries })
-    })()
-    return () => { alive = false }
-  }, [projects])
 
   const hits = useMemo<Hit[]>(() => {
     const term = q.trim().toLowerCase()
@@ -79,14 +62,14 @@ export default function CommandPalette({ projects, members, onClose, onNavigate 
     for (const t of tasks) {
       if (match(t.name)) out.push({ key: `t${t.id}`, icon: 'checkSquare', title: s(t.name), sub: `Task · ${projName.get(Number(t.project_id)) ?? ''}`, group: 'Tasks', target: { kind: 'item', projectId: Number(t.project_id), tab: 'Tasks' } })
     }
-    for (const r of items.rfis) {
+    for (const r of rfis) {
       if (match(r.subject, r.rfi_number, r.description)) out.push({ key: `r${r.id}`, icon: 'send', title: s(r.subject) || `RFI ${s(r.rfi_number)}`, sub: `RFI · ${projName.get(Number(r.project_id)) ?? ''}`, group: 'RFIs', target: { kind: 'item', projectId: Number(r.project_id), tab: 'RFI/Queries' } })
     }
-    for (const r of items.queries) {
+    for (const r of rfis.filter((x) => String(x.kind ?? '').toLowerCase() === 'query')) {
       if (match(r.subject, r.query_number, r.description)) out.push({ key: `q${r.id}`, icon: 'help', title: s(r.subject) || `Query ${s(r.query_number)}`, sub: `Query · ${projName.get(Number(r.project_id)) ?? ''}`, group: 'Queries', target: { kind: 'item', projectId: Number(r.project_id), tab: 'RFI/Queries' } })
     }
     return out.slice(0, 40)
-  }, [q, projects, members, items, tasks, projName])
+  }, [q, projects, members, rfis, tasks, projName])
 
   useEffect(() => { setActive(0) }, [q])
 
@@ -135,3 +118,4 @@ export default function CommandPalette({ projects, members, onClose, onNavigate 
     </div>
   )
 }
+

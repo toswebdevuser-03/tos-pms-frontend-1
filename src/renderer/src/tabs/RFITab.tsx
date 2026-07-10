@@ -1,9 +1,13 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Icon from '../components/Icon'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { Attachment } from '../types'
 import { DISCIPLINES } from '../disciplines'
 import { useFilters } from '../components/FilterBar'
+import { useItems } from '../hooks/useItems'
+import { useData } from '../context/DataContext'
+import { useQueryClient } from '@tanstack/react-query'
+import { queryKeyFactory } from '../hooks/queryKeyFactory'
 
 interface Props {
   projectId: number
@@ -41,7 +45,9 @@ function nextNumber(rows: Row[], kind: Kind, disc: string): string {
 interface Draft { id?: number; kind: Kind; discipline: string; submitted_date: string; rfi_number?: string; points: Point[] }
 
 export default function RFITab({ projectId, projectName, onToast }: Props) {
-  const [rows, setRows] = useState<Row[]>([])
+  const queryClient = useQueryClient()
+  const { refreshRfis } = useData()
+  const { data: rows = [] } = useItems('rfi', projectId)
   const [draft, setDraft] = useState<Draft | null>(null)
   const [legacy, setLegacy] = useState<Row | null>(null)
   const [saving, setSaving] = useState(false)
@@ -50,11 +56,13 @@ export default function RFITab({ projectId, projectName, onToast }: Props) {
   const [confirmRemovePoint, setConfirmRemovePoint] = useState<number | null>(null)
   const toggleSel = (id: number): void => setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
 
-  const load = useCallback(async () => {
-    const res = await window.api.items.getByProject(projectId, 'rfi')
-    if (res.ok) { setRows(res.data as Row[]); setSelected(new Set()) }
-  }, [projectId])
-  useEffect(() => { load() }, [load])
+  const refreshRows = async (): Promise<void> => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeyFactory.items.byProject('rfi', projectId) }),
+      refreshRfis()
+    ])
+    setSelected(new Set())
+  }
 
   const withMeta = useMemo(() => rows.map((r) => ({
     ...r, _status: statusOf(r), _kind: String(r.kind ?? 'RFI'),
@@ -122,13 +130,13 @@ export default function RFITab({ projectId, projectName, onToast }: Props) {
         await window.api.items.create('rfi', { project_id: projectId, kind: draft.kind, discipline: draft.discipline, submitted_date: draft.submitted_date, rfi_number: number, points, status })
         onToast(`${draft.kind} ${number} created`)
       }
-      setDraft(null); load()
+      setDraft(null); await refreshRows()
     } finally { setSaving(false) }
   }
 
   const remove = async (r: Row): Promise<void> => {
     await window.api.items.delete('rfi', r.id as number)
-    onToast('Deleted'); setLegacy(null); load()
+    onToast('Deleted'); setLegacy(null); await refreshRows()
   }
 
   // Export the selected rows (or all when none selected) as Excel or a clean Word doc.

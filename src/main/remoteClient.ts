@@ -167,6 +167,15 @@ export async function allDispatches(): Promise<Row[]> {
 export async function allTasks(): Promise<Row[]> {
   return req('GET', '/all/tasks')
 }
+export async function allTimesheets(): Promise<Row[]> {
+  return req('GET', '/all/timesheets')
+}
+export async function allQc(): Promise<Row[]> {
+  return req('GET', '/all/qc')
+}
+export async function allRfis(): Promise<Row[]> {
+  return req('GET', '/all/rfi')
+}
 
 // ── Attachments (records; file bytes handled in Phase 5) ──────────────────────
 export async function attachmentsGet(entityType: string, entityId: number): Promise<Row[]> {
@@ -215,5 +224,4 @@ export async function attachmentRaw(storedPath: string): Promise<{ buffer: Buffe
   const ab = await res.arrayBuffer()
   return { buffer: Buffer.from(ab), contentType: res.headers.get('content-type') || 'application/octet-stream' }
 }
-
 

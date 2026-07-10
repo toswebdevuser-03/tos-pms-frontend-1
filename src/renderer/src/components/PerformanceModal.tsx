@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useMemo } from 'react'
 import { Project, Member } from '../types'
 import { useApp } from '../context/AppContext'
 import { overallOf } from '../tabs/FeedbackTab'
@@ -7,6 +7,8 @@ import Avatar from './Avatar'
 import Icon from './Icon'
 import { useFilters } from './FilterBar'
 import { useEscapeKey } from '../lib/useEscapeKey'
+import { useData } from '../context/DataContext'
+import { useItemsByProjects } from '../hooks/useItems'
 
 interface Props {
   projects: Project[]
@@ -24,24 +26,13 @@ export default function PerformanceModal({ projects, onClose, embedded }: Props)
   // Talent hub, TalentModal itself owns the overlay and its own Escape handler.
   useEscapeKey(embedded ? () => {} : onClose)
   const { currentMember, members, isLead } = useApp()
-  const [feedback, setFeedback] = useState<Row[]>([])
-  const [tasks, setTasks] = useState<Row[]>([])
-
-  const load = useCallback(async () => {
-    const fb: Row[] = []
-    const tk: Row[] = []
-    for (const p of projects) {
-      const [fres, tres] = await Promise.all([
-        window.api.items.getByProject(p.id, 'feedback'),
-        window.api.items.getByProject(p.id, 'task')
-      ])
-      if (fres.ok) for (const r of fres.data as Row[]) fb.push({ ...r, projectName: p.name })
-      if (tres.ok) for (const r of tres.data as Row[]) tk.push(r)
-    }
-    setFeedback(fb); setTasks(tk)
-  }, [projects])
-
-  useEffect(() => { load() }, [load])
+  const { tasks: allTasks } = useData()
+  const projectIds = useMemo(() => projects.map((p) => p.id), [projects])
+  const projectIdSet = useMemo(() => new Set(projectIds), [projectIds])
+  const projectNameById = useMemo(() => new Map(projects.map((p) => [p.id, p.name])), [projects])
+  const { data: feedbackMap = {} } = useItemsByProjects('feedback', projectIds)
+  const feedback = useMemo(() => projectIds.flatMap((id) => (feedbackMap[id] ?? []).map((r) => ({ ...r, projectName: projectNameById.get(id) ?? '' }))), [feedbackMap, projectIds, projectNameById])
+  const tasks = useMemo(() => allTasks.filter((t) => projectIdSet.has(Number(t.project_id))), [allTasks, projectIdSet])
 
   const visible = useMemo(() => members.filter((m) => {
     if (isLead) return true // Team Lead and above see everyone's performance

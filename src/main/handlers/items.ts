@@ -1,9 +1,51 @@
 import { ipcMain } from 'electron'
-import { itemsGetByProject, itemCreate, itemUpdate, itemDelete, Row } from '../dataLayer'
+import {
+  itemsGetByProject,
+  itemCreate,
+  itemUpdate,
+  itemDelete,
+  allTasks,
+  allTimesheets,
+  allQc,
+  allRfis,
+  allOpenWip,
+  allDispatches,
+  Row
+} from '../dataLayer'
 
 export function registerItemHandlers(): void {
   ipcMain.handle('items:getByProject', async (_e, { projectId, type }) => {
     try { return { ok: true, data: await itemsGetByProject(projectId, type) } }
+    catch (e) { return { ok: false, error: String(e) } }
+  })
+
+  ipcMain.handle('all:tasks', async () => {
+    try { return { ok: true, data: await allTasks() } }
+    catch (e) { return { ok: false, error: String(e) } }
+  })
+
+  ipcMain.handle('all:timesheets', async () => {
+    try { return { ok: true, data: await allTimesheets() } }
+    catch (e) { return { ok: false, error: String(e) } }
+  })
+
+  ipcMain.handle('all:qc', async () => {
+    try { return { ok: true, data: await allQc() } }
+    catch (e) { return { ok: false, error: String(e) } }
+  })
+
+  ipcMain.handle('all:rfi', async () => {
+    try { return { ok: true, data: await allRfis() } }
+    catch (e) { return { ok: false, error: String(e) } }
+  })
+
+  ipcMain.handle('all:wip', async () => {
+    try { return { ok: true, data: await allOpenWip() } }
+    catch (e) { return { ok: false, error: String(e) } }
+  })
+
+  ipcMain.handle('all:dispatches', async () => {
+    try { return { ok: true, data: await allDispatches() } }
     catch (e) { return { ok: false, error: String(e) } }
   })
 

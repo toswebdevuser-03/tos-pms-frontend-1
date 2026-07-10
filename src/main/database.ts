@@ -359,6 +359,15 @@ export async function allDispatches(): Promise<Row[]> {
 export async function allTasks(): Promise<Row[]> {
   return load().tasks
 }
+export async function allTimesheets(): Promise<Row[]> {
+  return load().timesheets
+}
+export async function allQc(): Promise<Row[]> {
+  return load().qc_items
+}
+export async function allRfis(): Promise<Row[]> {
+  return load().rfis
+}
 export async function projectById(id: number): Promise<Row | undefined> {
   return load().projects.find((p) => p.id === id)
 }

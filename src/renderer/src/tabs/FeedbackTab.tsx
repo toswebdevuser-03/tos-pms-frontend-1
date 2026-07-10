@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useMemo } from 'react'
 import CrudTab from '../components/CrudTab'
 import { Column } from '../components/DataTable'
 import { FieldDef } from '../components/FormModal'
@@ -7,6 +7,7 @@ import { useApp } from '../context/AppContext'
 import { roleRank } from '../roles'
 import { num } from '../lib/hours'
 import { memberNameMap } from '../lib/people'
+import { useProjectMembersByProject } from '../hooks/useProjectMembers'
 
 interface Props {
   projectId: number
@@ -26,11 +27,7 @@ export function overallOf(r: Record<string, unknown>): number {
 
 export default function FeedbackTab({ projectId, projectName, onToast }: Props) {
   const { isAdmin, currentMember, members: allMembers } = useApp()
-  const [members, setMembers] = useState<Member[]>([])
-
-  useEffect(() => {
-    window.api.projectMembers.get(projectId).then((res) => { if (res.ok) setMembers(res.data as Member[]) })
-  }, [projectId])
+  const { data: members = [] } = useProjectMembersByProject(projectId)
 
   const nameById = useMemo(() => memberNameMap(allMembers), [allMembers])
   // Higher roles give feedback ABOUT lower roles, and can only SEE feedback about

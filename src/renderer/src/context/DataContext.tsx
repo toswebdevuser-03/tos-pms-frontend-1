@@ -1,15 +1,30 @@
 /**
- * Shared cross-project data layer. Loads projects / statuses / all tasks / all
- * timesheets / project-member links ONCE (via the single-call /api/all/* and
- * /api/statuses endpoints) and caches them, so features read from here instead of
- * each running their own `projects.map(getByProject)` loop (~22 files did before).
+ * DataContext — Shared cross-project data layer.
  *
- * Opt-in: features call useData(); anything not yet migrated keeps working.
- * Real-time events invalidate only the affected slice.
+ * Phase 3: Internally backed by TanStack Query hooks. The public API
+ * (`useData()` and `DataProvider`) is UNCHANGED — all 22+ consumers continue
+ * to call `useData().tasksByProject(id)`, `useData().timesheetsByProject(id)`, etc.
+ *
+ * What changed internally:
+ * - `useState` + `useCallback` fetch pattern → TanStack Query hooks
+ * - WS subscription for data invalidation REMOVED (centralized in WebsocketQueryInvalidator)
+ * - Individual `refresh*` methods now delegate to `queryClient.invalidateQueries`
+ * - `loading` reflects the loading state of the underlying TanStack Query hooks
+ *
+ * Cache deduplication: projects and statuses fetched in DataContext share the same
+ * TanStack Query cache keys as App.tsx — only ONE network request per key, served
+ * from cache to all consumers.
  */
-import { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react'
+import { createContext, useContext, useMemo, useCallback, ReactNode } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Project, ProjectStatus } from '../types'
-import { useApp } from './AppContext'
+import { useProjects, useStatuses } from '../hooks/useApiQuery'
+import { useAllTasks } from '../hooks/useTasks'
+import { useAllTimesheets } from '../hooks/useTimesheets'
+import { useAllQc } from '../hooks/useQc'
+import { useAllRfis } from '../hooks/useRfis'
+import { useProjectMembers } from '../hooks/useProjectMembers'
+import { queryKeyFactory } from '../hooks/queryKeyFactory'
 
 type Row = Record<string, unknown>
 interface ProjectMemberLink { id: number; project_id: number; member_id: number }
@@ -21,6 +36,7 @@ interface DataValue {
   tasks: Row[]
   timesheets: Row[]
   qc: Row[]
+  rfis: Row[]
   projectMembers: ProjectMemberLink[]
   loading: boolean
   refreshProjects: () => Promise<void>
@@ -28,11 +44,13 @@ interface DataValue {
   refreshTasks: () => Promise<void>
   refreshTimesheets: () => Promise<void>
   refreshQc: () => Promise<void>
+  refreshRfis: () => Promise<void>
   refreshProjectMembers: () => Promise<void>
   refreshAll: () => Promise<void>
   tasksByProject: (projectId: number) => Row[]
   timesheetsByProject: (projectId: number) => Row[]
   qcByProject: (projectId: number) => Row[]
+  rfisByProject: (projectId: number) => Row[]
   memberIdsForProject: (projectId: number) => number[]
 }
 
@@ -45,76 +63,62 @@ export function useData(): DataValue {
 }
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const { authMode, authUser } = useApp()
-  const [projects, setProjects] = useState<Project[]>([])
-  const [statuses, setStatuses] = useState<ProjectStatus[]>([])
-  const [tasks, setTasks] = useState<Row[]>([])
-  const [timesheets, setTimesheets] = useState<Row[]>([])
-  const [qc, setQc] = useState<Row[]>([])
-  const [projectMembers, setProjectMembers] = useState<ProjectMemberLink[]>([])
-  const [loading, setLoading] = useState(true)
+  const queryClient = useQueryClient()
 
+  // ── TanStack Query hooks (shared cache with App.tsx — no duplicate fetches) ──
+  const { data: projects = [], isLoading: projectsLoading } = useProjects()
+  const { data: statusesRaw = [], isLoading: statusesLoading } = useStatuses()
+  const { data: tasks = [], isLoading: tasksLoading } = useAllTasks()
+  const { data: timesheets = [], isLoading: timesheetsLoading } = useAllTimesheets()
+  const { data: qc = [], isLoading: qcLoading } = useAllQc()
+  const { data: rfis = [], isLoading: rfisLoading } = useAllRfis()
+  const { data: projectMembers = [], isLoading: pmLoading } = useProjectMembers()
+
+  const loading = projectsLoading || statusesLoading || tasksLoading || timesheetsLoading || qcLoading || rfisLoading || pmLoading
+
+  // ── Cache invalidation helpers (public API compatibility) ────────────────────
   const refreshProjects = useCallback(async () => {
-    const res = await window.api.projects.getAll()
-    if (res.ok) setProjects(res.data as Project[])
-  }, [])
+    await queryClient.invalidateQueries({ queryKey: queryKeyFactory.projects.all() })
+  }, [queryClient])
+
   const refreshStatuses = useCallback(async () => {
-    const res = await window.api.projects.statuses()
-    if (res.ok) setStatuses(res.data as ProjectStatus[])
-  }, [])
+    await queryClient.invalidateQueries({ queryKey: queryKeyFactory.statuses.all() })
+  }, [queryClient])
+
   const refreshTasks = useCallback(async () => {
-    const res = await window.api.all.tasks()
-    if (res.ok) setTasks(res.data as Row[])
-  }, [])
+    await queryClient.invalidateQueries({ queryKey: queryKeyFactory.tasks.all() })
+  }, [queryClient])
+
   const refreshTimesheets = useCallback(async () => {
-    const res = await window.api.all.timesheets()
-    // Pending manual entries (IT/Discussion/catch-up awaiting Team-Lead approval)
-    // must not reflect anywhere until approved — exclude them from the shared layer.
-    if (res.ok) setTimesheets((res.data as Row[]).filter((t) => !t.pending))
-  }, [])
+    await queryClient.invalidateQueries({ queryKey: queryKeyFactory.timesheets.all() })
+  }, [queryClient])
+
   const refreshQc = useCallback(async () => {
-    const res = await window.api.all.qc()
-    if (res.ok) setQc(res.data as Row[])
-  }, [])
+    await queryClient.invalidateQueries({ queryKey: queryKeyFactory.qc.all() })
+  }, [queryClient])
+
+  const refreshRfis = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: queryKeyFactory.rfis.all() })
+  }, [queryClient])
+
   const refreshProjectMembers = useCallback(async () => {
-    const res = await window.api.projectMembers.all()
-    if (res.ok) setProjectMembers(res.data as ProjectMemberLink[])
-  }, [])
+    await queryClient.invalidateQueries({ queryKey: queryKeyFactory.projectMembers.all() })
+  }, [queryClient])
 
   const refreshAll = useCallback(async () => {
-    setLoading(true)
-    await Promise.all([refreshProjects(), refreshStatuses(), refreshTasks(), refreshTimesheets(), refreshQc(), refreshProjectMembers()])
-    setLoading(false)
-  }, [refreshProjects, refreshStatuses, refreshTasks, refreshTimesheets, refreshQc, refreshProjectMembers])
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeyFactory.projects.all() }),
+      queryClient.invalidateQueries({ queryKey: queryKeyFactory.statuses.all() }),
+      queryClient.invalidateQueries({ queryKey: queryKeyFactory.tasks.all() }),
+      queryClient.invalidateQueries({ queryKey: queryKeyFactory.timesheets.all() }),
+      queryClient.invalidateQueries({ queryKey: queryKeyFactory.qc.all() }),
+      queryClient.invalidateQueries({ queryKey: queryKeyFactory.rfis.all() }),
+      queryClient.invalidateQueries({ queryKey: queryKeyFactory.projectMembers.all() }),
+    ])
+  }, [queryClient])
 
-  // Load once authenticated (mirrors AppContext's gating).
-  useEffect(() => {
-    if (authMode === 'local') {
-      refreshAll()
-      return
-    }
-
-    // authUser can still be null during the initial refreshAuth() round-trip.
-    if (!authUser) return
-
-    refreshAll()
-  }, [authMode, authUser, refreshAll])
-
-
-  // Real-time: refresh only the slice an event touches.
-  useEffect(() => {
-    const unsub = window.api.realtime.subscribe((evt) => {
-      if (evt.entity === 'project') { refreshProjects(); refreshStatuses() }
-      else if (evt.entity === 'status') refreshStatuses()
-      else if (evt.entity === 'projectMember') refreshProjectMembers()
-      else if (evt.entity === 'item') {
-        if (evt.type === 'task') refreshTasks()
-        else if (evt.type === 'timesheet') refreshTimesheets()
-        else if (evt.type === 'qc') refreshQc()
-      }
-    })
-    return unsub
-  }, [refreshProjects, refreshStatuses, refreshProjectMembers, refreshTasks, refreshTimesheets, refreshQc])
+  // ── Derived maps (unchanged from original) ──────────────────────────────────
+  const statuses = statusesRaw as ProjectStatus[]
 
   const statusMap = useMemo(() => {
     const m: Record<number, string> = {}
@@ -131,6 +135,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
     return m
   }, [tasks])
+
   const timesheetsMap = useMemo(() => {
     const m = new Map<number, Row[]>()
     for (const t of timesheets) {
@@ -140,6 +145,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
     return m
   }, [timesheets])
+
   const qcMap = useMemo(() => {
     const m = new Map<number, Row[]>()
     for (const q of qc) {
@@ -149,6 +155,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
     return m
   }, [qc])
+
+  const rfisMap = useMemo(() => {
+    const m = new Map<number, Row[]>()
+    for (const r of rfis) {
+      const pid = Number(r.project_id)
+      const arr = m.get(pid)
+      if (arr) arr.push(r); else m.set(pid, [r])
+    }
+    return m
+  }, [rfis])
+
   const memberIdsMap = useMemo(() => {
     const m = new Map<number, number[]>()
     for (const l of projectMembers) {
@@ -161,12 +178,56 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const tasksByProject = useCallback((pid: number) => tasksMap.get(pid) ?? [], [tasksMap])
   const timesheetsByProject = useCallback((pid: number) => timesheetsMap.get(pid) ?? [], [timesheetsMap])
   const qcByProject = useCallback((pid: number) => qcMap.get(pid) ?? [], [qcMap])
+  const rfisByProject = useCallback((pid: number) => rfisMap.get(pid) ?? [], [rfisMap])
   const memberIdsForProject = useCallback((pid: number) => memberIdsMap.get(pid) ?? [], [memberIdsMap])
 
-  const value: DataValue = {
-    projects, statuses, statusMap, tasks, timesheets, qc, projectMembers, loading,
-    refreshProjects, refreshStatuses, refreshTasks, refreshTimesheets, refreshQc, refreshProjectMembers, refreshAll,
-    tasksByProject, timesheetsByProject, qcByProject, memberIdsForProject
-  }
+  const value: DataValue = useMemo(() => ({
+    projects: projects as Project[],
+    statuses,
+    statusMap,
+    tasks,
+    timesheets,
+    qc,
+    rfis,
+    projectMembers,
+    loading,
+    refreshProjects,
+    refreshStatuses,
+    refreshTasks,
+    refreshTimesheets,
+    refreshQc,
+    refreshRfis,
+    refreshProjectMembers,
+    refreshAll,
+    tasksByProject,
+    timesheetsByProject,
+    qcByProject,
+    rfisByProject,
+    memberIdsForProject
+  }), [
+    projects,
+    statuses,
+    statusMap,
+    tasks,
+    timesheets,
+    qc,
+    rfis,
+    projectMembers,
+    loading,
+    refreshProjects,
+    refreshStatuses,
+    refreshTasks,
+    refreshTimesheets,
+    refreshQc,
+    refreshRfis,
+    refreshProjectMembers,
+    refreshAll,
+    tasksByProject,
+    timesheetsByProject,
+    qcByProject,
+    rfisByProject,
+    memberIdsForProject
+  ])
+
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>
 }

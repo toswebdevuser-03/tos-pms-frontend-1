@@ -11,6 +11,7 @@ import { config } from './config'
 let sock: WebSocket | null = null
 let reconnectTimer: NodeJS.Timeout | null = null
 let stopped = false
+let connectedOnce = false
 
 function wsUrl(): string {
   const base = config.remoteBaseUrl.replace(/^http/, 'ws').replace(/\/$/, '')
@@ -31,6 +32,10 @@ function connect(): void {
     scheduleReconnect()
     return
   }
+  sock.on('open', () => {
+    if (connectedOnce) broadcastToRenderers({ entity: 'catchup', action: 'update' })
+    connectedOnce = true
+  })
   sock.on('message', (data) => {
     try {
       broadcastToRenderers(JSON.parse(data.toString()))
@@ -54,6 +59,7 @@ export function startRealtime(): void {
 
 export function stopRealtime(): void {
   stopped = true
+  connectedOnce = false
   if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
   if (sock) { try { sock.close() } catch { /* noop */ } sock = null }
 }

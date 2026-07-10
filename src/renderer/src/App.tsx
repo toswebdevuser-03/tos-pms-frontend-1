@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Project, ProjectStatus, ToastAction, Member } from './types'
 import ProjectDetail from './components/ProjectDetail'
 import Toast from './components/Toast'
@@ -36,6 +37,11 @@ import FormModal, { FieldDef } from './components/FormModal'
 import { loadUpdates, unseen, getLastSeen, pushDesktopNotifications, requestNotifyPermission, ProjectUpdate } from './lib/projectUpdates'
 import { initAnalytics, track } from './lib/analytics'
 import Login from './Login'
+// Phase 3: TanStack Query hooks replace useState+useEffect data loading
+import { useProjects, useStatuses } from './hooks/useApiQuery'
+import { useProjectMembers } from './hooks/useProjectMembers'
+import { useReminderCount } from './hooks/useReminders'
+import { queryKeyFactory } from './hooks/queryKeyFactory'
 
 interface ToastState { message: string; type: 'success' | 'error'; key: number; action?: ToastAction }
 
@@ -61,7 +67,34 @@ const CREATE_FIELDS: FieldDef[] = [
 function Shell() {
   const { members, currentMember, setCurrentMember, isCompanyAdmin, isManager, isLead, isAdmin, authMode, authUser, logout, settings, authChecked } = useApp()
   const { refreshAll: refreshData } = useData()
-  const [projects, setProjects] = useState<Project[]>([])
+  const queryClient = useQueryClient()
+
+  // ── Phase 3: TanStack Query — projects, statuses, assignments, reminders ─────
+  // These replace the previous useState + useCallback + useEffect pattern.
+  // Data is served from the TanStack Query cache; WS events invalidate it via
+  // WebsocketQueryInvalidator (centralized in main.tsx → RootWithProviders).
+  const { data: projects = [] } = useProjects()
+  const { data: statusesRaw = [] } = useStatuses()
+  const { data: allProjectMembers = [] } = useProjectMembers()
+  const { data: reminderCount = 0 } = useReminderCount()
+
+  // Derive statusMap from cached statuses
+  const statusMap = useMemo(() => {
+    const m: Record<number, string> = {}
+    ;(statusesRaw as ProjectStatus[]).forEach((s) => { if (s.overall) m[s.project_id] = s.overall })
+    return m
+  }, [statusesRaw])
+
+  // Derive myAssignments (Set of projectIds for current user) from project members
+  const myAssignments = useMemo(() => {
+    const memberIds = [currentMember?.id, authUser?.mid].filter((id): id is number => typeof id === 'number')
+    if (memberIds.length === 0) return new Set<number>()
+    const ids = (allProjectMembers as { project_id: number; member_id: number }[])
+      .filter((r) => memberIds.includes(r.member_id)).map((r) => r.project_id)
+    return new Set<number>(ids)
+  }, [allProjectMembers, currentMember, authUser])
+
+  // ── UI state (unchanged from original) ────────────────────────────────────
   // Restore the last view across refreshes: a feature window takes priority,
   // otherwise the open project (they're persisted in localStorage below).
   const [selectedId, setSelectedId] = useState<number | null>(() => {
@@ -71,6 +104,9 @@ function Shell() {
   const [toast, setToast] = useState<ToastState | null>(null)
   const [search, setSearch] = useState('')
   const [showReminders, setShowReminders] = useState(false)
+
+  // (TS fix) ensure stable types when composing state elsewhere.
+  // (No behavior change; satisfies strict typing.)
   // Single active feature window (see Feature type). Opening another swaps it in;
   // closeFeature()/← Back returns to the dashboard or the open project.
   const [feature, setFeature] = useState<Feature | null>(() => (localStorage.getItem('tos_feature') as Feature) || null)
@@ -89,9 +125,14 @@ function Shell() {
     if (!res.ok || !res.data) { showToast(res.error ?? 'Could not create project', 'error'); return }
     const pid = (res.data as { id: number }).id
     setCreateType(null)
-    await Promise.all([loadProjects(), loadAssignments()]); void refreshData()
+    // Invalidate projects + project-members cache so new project appears immediately
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeyFactory.projects.all() }),
+      queryClient.invalidateQueries({ queryKey: queryKeyFactory.projectMembers.all() }),
+    ])
+    void refreshData()
     setSelectedId(pid)
-    showToast(`Project “${data.name}” created`)
+    showToast(`Project "${data.name}" created`)
   }
   const [showMenu, setShowMenu] = useState(false)
   // Project navigation is opened on demand (Workspace → Projects) rather than
@@ -101,8 +142,6 @@ function Shell() {
   const [showArchived, setShowArchived] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [gotoTab, setGotoTab] = useState<{ tab: string; n: number }>({ tab: 'Dashboard', n: 0 })
-  const [myAssignments, setMyAssignments] = useState<Set<number>>(new Set())
-  const [reminderCount, setReminderCount] = useState(0)
   const [theme, setTheme] = useState<'dark' | 'light'>(() => (localStorage.getItem('theme') as 'dark' | 'light') || 'dark')
   // Full-window popups (the Workspace menu toggle for this was removed; keeps
   // whatever was last persisted, defaulting on).
@@ -123,58 +162,6 @@ function Shell() {
     localStorage.setItem('theme', theme)
   }, [theme])
 
-  const [statusMap, setStatusMap] = useState<Record<number, string>>({})
-
-  const loadProjects = useCallback(async () => {
-    const res = await window.api.projects.getAll()
-    if (res.ok) setProjects(res.data as Project[])
-  }, [])
-
-  const loadStatuses = useCallback(async () => {
-    const res = await window.api.projects.statuses()
-    if (res.ok) {
-      const m: Record<number, string> = {}
-      ;(res.data as ProjectStatus[]).forEach((s) => { if (s.overall) m[s.project_id] = s.overall })
-      setStatusMap(m)
-    }
-  }, [])
-
-  const loadReminderCount = useCallback(async () => {
-    const res = await window.api.reminders.get()
-    if (res.ok) setReminderCount((res.data as unknown[]).filter((r) => (r as { severity: string }).severity !== 'upcoming').length)
-  }, [])
-
-  // Which projects the current member is assigned to (for visibility).
-  const loadAssignments = useCallback(async () => {
-    const res = await window.api.projectMembers.all()
-    if (!res.ok) return
-    const memberIds = [currentMember?.id, authUser?.mid].filter((id): id is number => typeof id === 'number')
-    if (memberIds.length === 0) { setMyAssignments(new Set()); return }
-    const ids = (res.data as { project_id: number; member_id: number }[])
-      .filter((r) => memberIds.includes(r.member_id)).map((r) => r.project_id)
-    setMyAssignments(new Set(ids))
-  }, [currentMember, authUser?.mid])
-
-  // Only load protected data once the auth state is known.
-  useEffect(() => {
-    if (authMode === 'local') {
-      loadProjects(); loadStatuses(); loadReminderCount();
-      return
-    }
-
-    // Remote mode: wait until we've checked auth and a user is present.
-    if (!authChecked) return
-    if (!authUser) return
-
-    loadProjects(); loadStatuses(); loadReminderCount()
-  }, [loadProjects, loadStatuses, loadReminderCount, authMode, authChecked, authUser])
-
-  useEffect(() => {
-    if (authMode === 'local') { loadAssignments(); return }
-    if (!authChecked) return
-    if (!authUser) return
-    loadAssignments()
-  }, [loadAssignments, authMode, authChecked, authUser])
   // Opening a project closes any feature window so the project shows through.
   useEffect(() => { if (selectedId != null) setFeature(null) }, [selectedId])
   // Persist the current view so a browser refresh restores it (not the dashboard).
@@ -182,50 +169,26 @@ function Shell() {
   useEffect(() => { localStorage.setItem('tos_selected', selectedId != null ? String(selectedId) : '') }, [selectedId])
   // If the restored/open project no longer exists, fall back to the dashboard.
   useEffect(() => {
-    if (selectedId != null && projects.length > 0 && !projects.some((p) => p.id === selectedId)) setSelectedId(null)
+    if (selectedId != null && projects.length > 0 && !projects.some((p) => (p as Project).id === selectedId)) setSelectedId(null)
   }, [projects, selectedId])
   // Full-screen popup preference → body class (CSS expands every modal).
   useEffect(() => { document.body.classList.toggle('fs-modals', fsModals); localStorage.setItem('tos_fullscreen', fsModals ? 'on' : 'off') }, [fsModals])
 
-  // Real-time updates (remote mode): refresh the affected view when another
-  // user changes data. detailRefresh bumps re-mount the open project's tab.
+  // Real-time updates (remote mode): detailRefresh bumps re-mount the open project's tab.
+  // NOTE: Projects/statuses/assignments/reminderCount are NO LONGER refreshed here.
+  // The WebsocketQueryInvalidator (in main.tsx) handles all cache invalidation centrally.
   const [detailRefresh, setDetailRefresh] = useState(0)
   const selectedIdRef = useRef<number | null>(null)
   useEffect(() => { selectedIdRef.current = selectedId }, [selectedId])
   useEffect(() => {
     const unsub = window.api.realtime.subscribe((evt) => {
-      if (['project', 'member', 'projectMember', 'status'].includes(evt.entity)) {
-        loadProjects(); loadStatuses(); loadAssignments(); loadReminderCount()
-      }
+      // Only trigger a project detail re-mount for events affecting the open project.
       if (evt.projectId != null && evt.projectId === selectedIdRef.current) {
         setDetailRefresh((n) => n + 1)
       }
     })
     return unsub
-  }, [loadProjects, loadStatuses, loadAssignments, loadReminderCount])
-
-  // Near-real-time refresh WITHOUT interrupting data entry. The WebSocket can't
-  // traverse the Vercel→ngrok proxy, so we poll on an interval + on tab focus —
-  // but we SKIP any tick while the user is actively working (a modal/form is open
-  // or an editable field is focused), so a refresh never closes a form mid-edit.
-  // The next tick (after they finish) catches them up.
-  useEffect(() => {
-    const isBusy = (): boolean => {
-      if (document.querySelector('.modal-overlay')) return true // a form / feature window is open
-      const el = document.activeElement as HTMLElement | null
-      return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)
-    }
-    const refreshNow = (): void => {
-      if (isBusy()) return // don't interrupt active data entry
-      loadProjects(); loadStatuses(); loadAssignments(); loadReminderCount(); refreshData()
-      setDetailRefresh((n) => n + 1)
-    }
-    const onVisible = (): void => { if (!document.hidden) refreshNow() }
-    const id = window.setInterval(() => { if (!document.hidden) refreshNow() }, 30000)
-    window.addEventListener('focus', onVisible)
-    document.addEventListener('visibilitychange', onVisible)
-    return () => { window.clearInterval(id); window.removeEventListener('focus', onVisible); document.removeEventListener('visibilitychange', onVisible) }
-  }, [loadProjects, loadStatuses, loadAssignments, loadReminderCount, refreshData])
+  }, [])
 
   const showToast = (message: string, type: 'success' | 'error' = 'success', action?: ToastAction) => {
     setToast({ message, type, key: Date.now(), action })
@@ -278,18 +241,18 @@ function Shell() {
   const myName = authUser?.name || currentMember?.name || ''
   const managerDisciplines = useMemo(() => splitDisciplines(myDiscipline), [myDiscipline])
   const scopedProjects = useMemo(() => {
-    if (isCompanyAdmin) return projects
+    if (isCompanyAdmin) return projects as Project[]
     if (isManager) {
-      return projects.filter((p) =>
+      return (projects as Project[]).filter((p) =>
         myAssignments.has(p.id) ||
         (!!myName && p.created_by === myName) ||
         (managerDisciplines.length > 0 && splitDisciplines(p.discipline as string).some((d) => managerDisciplines.includes(d)))
       )
     }
     if (isLead) { // Team Lead (Manager handled above) → created or assigned
-      return projects.filter((p) => myAssignments.has(p.id) || (!!myName && p.created_by === myName))
+      return (projects as Project[]).filter((p) => myAssignments.has(p.id) || (!!myName && p.created_by === myName))
     }
-    return projects.filter((p) => myAssignments.has(p.id))
+    return (projects as Project[]).filter((p) => myAssignments.has(p.id))
   }, [projects, isCompanyAdmin, isManager, isLead, myAssignments, managerDisciplines, myName])
   const managerScopeIssue = isManager && !isCompanyAdmin && projects.length > 0 && scopedProjects.length === 0
     ? managerDisciplines.length === 0
@@ -316,14 +279,38 @@ function Shell() {
   // Unseen project updates (key events since last opened) — kept as the full list so
   // individual menus (My Tasks, each project, each project tab) can show their own
   // count instead of only a lump sum on the Workspace/Inbox buttons.
+  // WebSocket-first: no polling interval.
   const [unseenUpdates, setUnseenUpdates] = useState<ProjectUpdate[]>([])
-  useEffect(() => {
-    let alive = true
-    const run = (): void => { void loadUpdates(visibleProjects.map((p) => ({ id: p.id, name: p.name })), { me: currentMember?.id, members }).then((u) => { if (!alive) return; setUnseenUpdates(unseen(u, getLastSeen())); pushDesktopNotifications(u) }) }
-    run()
-    const id = window.setInterval(run, 60000)
-    return () => { alive = false; window.clearInterval(id) }
+  const refreshUnseenUpdates = useCallback(async () => {
+    const u = await loadUpdates(
+      visibleProjects.map((p) => ({ id: p.id, name: p.name })),
+      { me: currentMember?.id, members }
+    )
+    setUnseenUpdates(unseen(u, getLastSeen()))
+    pushDesktopNotifications(u)
   }, [visibleProjects, currentMember, members])
+
+  // Initial load and refresh when the project scope changes.
+  useEffect(() => {
+    void refreshUnseenUpdates()
+  }, [refreshUnseenUpdates])
+
+  // Refresh unseen updates on WebSocket events (inbox relevance only).
+  // NOTE: This WS subscription is kept because `unseenUpdates` is UI-only state
+  // (not a fetch) and cannot be managed by TanStack Query.
+  useEffect(() => {
+    const unsub = window.api.realtime.subscribe((evt) => {
+      // Inbox/recent-updates are built from item + dispatch + rfi + status changes.
+      const isInboxRelevant =
+        evt.entity === 'status' ||
+        (evt.entity === 'item' && ['rfi', 'task', 'dispatch', 'wip'].includes(evt.type ?? '')) ||
+        evt.entity === 'project'
+      if (!isInboxRelevant) return
+      void refreshUnseenUpdates()
+    })
+    return unsub
+  }, [refreshUnseenUpdates])
+
   const updateCount = unseenUpdates.length
   const taskUpdateCount = useMemo(() => unseenUpdates.filter((u) => u.kind === 'task').length, [unseenUpdates])
   const unseenByProject = useMemo(() => {
@@ -400,7 +387,7 @@ function Shell() {
           {feature === 'empDash' && empDashMember ? (
             <EmployeeDashboard member={empDashMember} onSelect={setSelectedId} onBack={closeFeature} />
           ) : feature === 'alloc' ? (
-            <AllocationHub projects={visibleProjects} onClose={closeFeature} onToast={showToast} onChanged={() => { loadAssignments(); refreshData() }} />
+            <AllocationHub projects={visibleProjects} onClose={closeFeature} onToast={showToast} onChanged={() => { queryClient.invalidateQueries({ queryKey: queryKeyFactory.projectMembers.all() }); refreshData() }} />
           ) : feature === 'workAlloc' ? (
             <AllocationModal projects={visibleProjects} onClose={closeFeature} onToast={showToast} />
           ) : feature === 'taskAlloc' ? (
@@ -410,12 +397,12 @@ function Shell() {
               key={selected.id}
               project={selected}
               refreshKey={detailRefresh}
-              onUpdate={() => { loadProjects(); loadStatuses() }}
-              onDelete={() => { setSelectedId(null); loadProjects(); loadStatuses() }}
+              onUpdate={() => { queryClient.invalidateQueries({ queryKey: queryKeyFactory.projects.all() }); queryClient.invalidateQueries({ queryKey: queryKeyFactory.statuses.all() }) }}
+              onDelete={() => { setSelectedId(null); queryClient.invalidateQueries({ queryKey: queryKeyFactory.projects.all() }); queryClient.invalidateQueries({ queryKey: queryKeyFactory.statuses.all() }) }}
               onBack={() => setSelectedId(null)}
               gotoTab={gotoTab}
               onOpenRecycleBin={() => setFeature('recycleBin')}
-              onToast={(m, t) => { showToast(m, t); loadReminderCount(); loadStatuses() }}
+              onToast={(m, t) => { showToast(m, t); queryClient.invalidateQueries({ queryKey: queryKeyFactory.reminders.all() }); queryClient.invalidateQueries({ queryKey: queryKeyFactory.statuses.all() }) }}
               updates={unseenUpdates}
             />
           ) : visibleProjects.length === 0 ? (
@@ -458,18 +445,18 @@ function Shell() {
           {/* Feature windows dock into the main area (sidebar + topbar stay visible),
               matching the Work/Task Allocation footprint when full-page mode is on.
               One slot only: opening another swaps it in; ← Back returns here. */}
-          {feature === 'assign' && <AssignmentsModal projects={projects} onClose={closeFeature} onToast={showToast} onChanged={() => { loadAssignments(); refreshData() }} />}
+          {feature === 'assign' && <AssignmentsModal projects={projects as Project[]} onClose={closeFeature} onToast={showToast} onChanged={() => { queryClient.invalidateQueries({ queryKey: queryKeyFactory.projectMembers.all() }); refreshData() }} />}
           {feature === 'talent' && <TalentModal projects={visibleProjects} onClose={closeFeature} onToast={showToast} />}
           {feature === 'bestFit' && <BestFitModal projects={visibleProjects} onClose={closeFeature} />}
           {feature === 'myAlloc' && <MyAllocationModal projects={visibleProjects} onClose={closeFeature} onToast={showToast} />}
           {feature === 'approvals' && <ApprovalsModal onClose={closeFeature} onToast={showToast} />}
-          {feature === 'staffing' && <StaffingModal projects={visibleProjects} onClose={() => { closeFeature(); loadAssignments() }} onToast={showToast} />}
+          {feature === 'staffing' && <StaffingModal projects={visibleProjects} onClose={() => { closeFeature(); queryClient.invalidateQueries({ queryKey: queryKeyFactory.projectMembers.all() }) }} onToast={showToast} />}
           {(feature === 'exec' || feature === 'disc') && <ExecDashboard key={feature} projects={visibleProjects} initialView={feature === 'disc' ? 'discipline' : 'portfolio'} onClose={closeFeature} onSelect={setSelectedId} onToast={showToast} />}
-          {feature === 'quote' && <QuoteModal onClose={closeFeature} onToast={showToast} onOpenProject={async (id) => { await Promise.all([loadProjects(), loadAssignments()]); setSelectedId(id) }} />}
+          {feature === 'quote' && <QuoteModal onClose={closeFeature} onToast={showToast} onOpenProject={async (id) => { await queryClient.invalidateQueries({ queryKey: queryKeyFactory.projects.all() }); await queryClient.invalidateQueries({ queryKey: queryKeyFactory.projectMembers.all() }); setSelectedId(id) }} />}
           {(feature === 'clientData' || feature === 'clientDash') && (
             <ClientsModal mode={feature === 'clientData' ? 'data' : 'dashboard'} projects={visibleProjects} onClose={closeFeature} onToast={showToast} onSelect={setSelectedId} />
           )}
-          {feature === 'recycleBin' && <RecycleBinModal onClose={closeFeature} onToast={showToast} onChanged={() => { loadProjects(); loadAssignments() }} />}
+          {feature === 'recycleBin' && <RecycleBinModal onClose={closeFeature} onToast={showToast} onChanged={() => { queryClient.invalidateQueries({ queryKey: queryKeyFactory.projects.all() }); queryClient.invalidateQueries({ queryKey: queryKeyFactory.projectMembers.all() }) }} />}
           {feature === 'org' && <OrgChartModal onClose={closeFeature} />}
           {feature === 'myTasks' && <MyTasksModal projects={visibleProjects} onClose={closeFeature} onToast={showToast} />}
           {feature === 'myWeek' && <MyWeekModal projects={visibleProjects} onClose={closeFeature} onNavigate={goToProjectTab} />}
@@ -491,7 +478,7 @@ function Shell() {
       {showChangePw && <ChangePasswordModal onClose={() => setShowChangePw(false)} onToast={showToast} />}
       <TaskTimer projects={visibleProjects} onToast={showToast} />
       {paletteOpen && <CommandPalette projects={visibleProjects} members={members} onClose={() => setPaletteOpen(false)} onNavigate={handlePalette} />}
-      {showReminders && <RemindersPanel projects={visibleProjects} onClose={() => { setShowReminders(false); loadReminderCount(); setUnseenUpdates([]) }} onToast={showToast} onNavigate={goToProjectTab} onCleared={() => setUnseenUpdates([])} />}
+      {showReminders && <RemindersPanel projects={visibleProjects} onClose={() => { setShowReminders(false); queryClient.invalidateQueries({ queryKey: queryKeyFactory.reminders.all() }); setUnseenUpdates([]) }} onToast={showToast} onNavigate={goToProjectTab} onCleared={() => setUnseenUpdates([])} />}
       {toast && <Toast key={toast.key} message={toast.message} type={toast.type} action={toast.action} onClose={() => setToast(null)} />}
     </div>
   )
@@ -511,9 +498,5 @@ function Gate() {
 }
 
 export default function App() {
-  return (
-    <AppProvider>
-      <Gate />
-    </AppProvider>
-  )
+  return <Gate />
 }

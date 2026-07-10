@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useMemo } from 'react'
 import { Project } from '../types'
 import { useApp } from '../context/AppContext'
 import { useData } from '../context/DataContext'
 import { num } from '../lib/hours'
 import Icon from './Icon'
 import { useEscapeKey } from '../lib/useEscapeKey'
+import { useItemsByProjects } from '../hooks/useItems'
 
 interface Props {
   projects: Project[]
@@ -27,13 +28,12 @@ function weekRange(): { start: Date; end: Date; keys: string[] } {
 export default function MyWeekModal({ projects, onClose, onNavigate }: Props) {
   useEscapeKey(onClose)
   const { currentMember } = useApp()
-  // Tasks/timesheets come from the shared data layer (one cached load). Allocations
-  // are not provided by the data layer, so they keep their own per-project loop.
   const { tasks: allTasks, timesheets: allTimesheets } = useData()
-  const [allocs, setAllocs] = useState<Row[]>([])
   const { keys } = useMemo(weekRange, [])
   const projName = useMemo(() => new Map(projects.map((p) => [p.id, p.name])), [projects])
   const projIds = useMemo(() => new Set(projects.map((p) => Number(p.id))), [projects])
+  const projectIds = useMemo(() => projects.map((p) => p.id), [projects])
+  const { data: allocationMap = {} } = useItemsByProjects('allocation', projectIds)
 
   // My tasks / timesheets, scoped to the projects passed in.
   const tasks = useMemo<Row[]>(() => {
@@ -49,18 +49,12 @@ export default function MyWeekModal({ projects, onClose, onNavigate }: Props) {
       .map((r) => ({ ...r, project_id: Number(r.project_id) }))
   }, [allTimesheets, projIds, currentMember])
 
-  const loadAllocs = useCallback(async () => {
-    if (!currentMember) { setAllocs([]); return }
-    const A: Row[] = []
-    await Promise.all(projects.map(async (p) => {
-      const a = await window.api.items.getByProject(p.id, 'allocation')
-      if (a.ok) (a.data as Row[])
-        .filter((r) => String(r.member_id) === String(currentMember.id))
-        .forEach((r) => A.push({ ...r, project_id: p.id }))
-    }))
-    setAllocs(A)
-  }, [projects, currentMember])
-  useEffect(() => { loadAllocs() }, [loadAllocs])
+  const allocs = useMemo<Row[]>(() => {
+    if (!currentMember) return []
+    return projectIds.flatMap((id) => (allocationMap[id] ?? [])
+      .filter((r) => String(r.member_id) === String(currentMember.id))
+      .map((r) => ({ ...r, project_id: id })))
+  }, [allocationMap, projectIds, currentMember])
 
   const today = new Date().toISOString().slice(0, 10)
   const dueTasks = useMemo(() =>

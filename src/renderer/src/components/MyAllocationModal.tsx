@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Project, OvertimeRequest } from '../types'
 import { useApp } from '../context/AppContext'
+import { useData } from '../context/DataContext'
 import Donut from './charts/Donut'
 import Icon from './Icon'
 import { useFilters } from './FilterBar'
@@ -26,26 +27,24 @@ interface Day { date: string; segs: Seg[]; cap: number }
 export default function MyAllocationModal({ projects, onClose, onToast }: Props) {
   useEscapeKey(onClose)
   const { currentMember } = useApp()
-  const [tasks, setTasks] = useState<Array<Row & { __project: string }>>([])
+  const { tasks: allTasks } = useData()
   const [overtime, setOvertime] = useState<OvertimeRequest[]>([])
   const [loading, setLoading] = useState(true)
+  const projName = useMemo(() => new Map(projects.map((p) => [p.id, p.name])), [projects])
+  const projIds = useMemo(() => new Set(projects.map((p) => Number(p.id))), [projects])
+  const tasks = useMemo<Array<Row & { __project: string }>>(() => {
+    if (!currentMember) return []
+    return allTasks
+      .filter((t) => projIds.has(Number(t.project_id)) && String(t.assigned_member_id) === String(currentMember.id) && t.status !== 'Done')
+      .map((t) => ({ ...t, __project: projName.get(Number(t.project_id)) ?? '' }))
+  }, [allTasks, projIds, currentMember, projName])
 
   const load = useCallback(async () => {
     setLoading(true)
-    const mine: Array<Row & { __project: string }> = []
-    if (currentMember) {
-      await Promise.all(projects.map(async (p) => {
-        const r = await window.api.items.getByProject(p.id, 'task')
-        if (r.ok) for (const t of r.data as Row[]) {
-          if (String(t.assigned_member_id) === String(currentMember.id) && t.status !== 'Done') mine.push({ ...t, __project: p.name })
-        }
-      }))
-    }
-    setTasks(mine)
     const o = await window.api.overtime.list()
     if (o.ok) setOvertime((o.data as OvertimeRequest[]).filter((x) => String(x.member_id) === String(currentMember?.id ?? '')))
     setLoading(false)
-  }, [projects, currentMember])
+  }, [currentMember])
   useEffect(() => { load() }, [load])
 
   const otApprovedByDate = useMemo(() => {

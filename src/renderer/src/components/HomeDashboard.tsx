@@ -85,35 +85,24 @@ function Kpi({ icon, label, value, sub, accent, onClick, active }: {
 type Filter = 'all' | 'NotStarted' | 'On-going' | 'On-hold' | 'Completed'
 
 export default function HomeDashboard({ projects, statusMap, members, canQuote, onSelect, onQuote, scopeIds }: Props) {
-  // Cross-project tasks / timesheets / member links come from the shared data layer
-  // (one cached load) instead of a per-project fetch loop. Open RFI/Query counts are
-  // not in the shared layer yet, so those stay a per-project load here.
-  const { tasks: allTasksRaw, timesheets: allTimesheetsRaw, tasksByProject: tasksFor, timesheetsByProject: tsFor, memberIdsForProject } = useData()
+  const { tasks: allTasksRaw, timesheets: allTimesheetsRaw, tasksByProject: tasksFor, timesheetsByProject: tsFor, rfisByProject, memberIdsForProject } = useData()
   // Optionally limit the global aggregates to a project subset (view-as-employee).
   const scopeSet = useMemo(() => (scopeIds ? new Set(scopeIds) : null), [scopeIds])
   const tasks = useMemo(() => (scopeSet ? allTasksRaw.filter((t) => scopeSet.has(Number(t.project_id))) : allTasksRaw), [allTasksRaw, scopeSet])
   const timesheets = useMemo(() => (scopeSet ? allTimesheetsRaw.filter((t) => scopeSet.has(Number(t.project_id))) : allTimesheetsRaw), [allTimesheetsRaw, scopeSet])
-  const [openByProject, setOpenByProject] = useState<Record<number, number>>({})
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
   const [typeFilter, setTypeFilter] = useState<'all' | 'Man-month' | 'Miscellaneous'>('all')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
 
-  const load = useCallback(async () => {
+  const openByProject = useMemo(() => {
     const open: Record<number, number> = {}
-    await Promise.all(projects.map(async (p) => {
-      const [r, q] = await Promise.all([
-        window.api.items.getByProject(p.id, 'rfi'),
-        window.api.items.getByProject(p.id, 'query')
-      ])
-      const openRfi = r.ok ? (r.data as Row[]).filter((x) => x.status === 'Open' || x.status === 'Pending').length : 0
-      const openQ = q.ok ? (q.data as Row[]).filter((x) => x.status === 'Open' || x.status === 'Pending').length : 0
-      open[p.id] = openRfi + openQ
-    }))
-    setOpenByProject(open)
-  }, [projects])
-  useEffect(() => { load() }, [load])
+    for (const p of projects) {
+      open[p.id] = rfisByProject(p.id).filter((x) => x.status === 'Open' || x.status === 'Pending').length
+    }
+    return open
+  }, [projects, rfisByProject])
 
   const riskOf = useCallback((p: Project): RiskResult => assessRisk({
     stage: statusMap[p.id] ?? 'On-going',

@@ -181,7 +181,7 @@ export interface AuthUser {
 export type AuthState = { mode: 'local' | 'remote'; user: AuthUser | null }
 
 export interface ChangeEvent {
-  entity: 'project' | 'status' | 'item' | 'member' | 'projectMember' | 'attachment'
+  entity: 'project' | 'status' | 'item' | 'member' | 'projectMember' | 'attachment' | 'quote' | 'client' | 'catchup'
   action: 'create' | 'update' | 'delete'
   type?: string
   projectId?: number

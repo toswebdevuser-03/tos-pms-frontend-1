@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useMemo } from 'react'
 import CrudTab from '../components/CrudTab'
 import { Column } from '../components/DataTable'
 import { FieldDef } from '../components/FormModal'
 import { Member } from '../types'
 import { useApp } from '../context/AppContext'
 import { memberNameMap } from '../lib/people'
+import { useProjectMembersByProject } from '../hooks/useProjectMembers'
 
 interface Props {
   projectId: number
@@ -18,11 +19,7 @@ const STATUS = ['Scheduled', 'In Progress', 'Dispatched', 'Acknowledged', 'Hold'
 
 export default function DispatchTab({ projectId, projectName, onToast }: Props) {
   const { isLead } = useApp() // project-setup section: Team Lead+ only
-  const [members, setMembers] = useState<Member[]>([])
-
-  useEffect(() => {
-    window.api.projectMembers.get(projectId).then((res) => { if (res.ok) setMembers(res.data as Member[]) })
-  }, [projectId])
+  const { data: members = [] } = useProjectMembersByProject(projectId)
 
   const nameById = useMemo(() => memberNameMap(members), [members])
 

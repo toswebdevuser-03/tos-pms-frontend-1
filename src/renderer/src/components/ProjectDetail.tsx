@@ -61,7 +61,7 @@ interface Props {
   updates?: ProjectUpdate[] // unseen updates across all visible projects; filtered here to this one
 }
 
-export default function ProjectDetail({ project, onUpdate, onDelete, onToast, onBack, gotoTab, refreshKey = 0, onOpenRecycleBin, updates = [] }: Props) {
+export default function ProjectDetail({ project, onUpdate, onDelete, onToast, onBack, gotoTab, onOpenRecycleBin, updates = [] }: Props) {
   const { isAdmin, isManager } = useApp()
   const [activeTab, setActiveTab] = useState<Tab>((gotoTab?.tab as Tab) || 'Dashboard')
   const [editing, setEditing] = useState(false)
@@ -96,7 +96,9 @@ export default function ProjectDetail({ project, onUpdate, onDelete, onToast, on
     else setOverall('')
   }, [project.id])
 
-  useEffect(() => { loadMeta() }, [loadMeta, refreshKey])
+  // No remount refreshKey logic; WS + TanStack Query invalidation updates tab data.
+  useEffect(() => { loadMeta() }, [loadMeta])
+
   // Jump to a tab requested from the command palette (fires on each palette pick).
   useEffect(() => { if (gotoTab && TABS.includes(gotoTab.tab as Tab)) setActiveTab(gotoTab.tab as Tab) }, [gotoTab?.n]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -104,6 +106,7 @@ export default function ProjectDetail({ project, onUpdate, onDelete, onToast, on
     onToast(msg, type, action)
     loadMeta()
   }
+
 
   const handleEditSubmit = async (data: Record<string, string>) => {
     await window.api.projects.update({ id: project.id, ...data } as Parameters<typeof window.api.projects.update>[0])
@@ -165,7 +168,7 @@ export default function ProjectDetail({ project, onUpdate, onDelete, onToast, on
         ))}
       </div>
 
-      <div className="tab-host" key={refreshKey}>
+      <div className="tab-host">
         {activeTab === 'Dashboard' && <DashboardTab {...tabProps} quotedHours={project.quoted_hours} onNavigate={(t) => setActiveTab(t as Tab)} project={project} overall={overall} />}
         {activeTab === 'Scope' && <ScopeTab {...tabProps} />}
         {activeTab === 'Input' && <PathTab type="input" singular="Input" primaryKey="date" primaryLabel="Date" primaryType="date" {...tabProps} hint="No inputs yet. Log the date you received an input and link the file/folder path, then open them from here." />}

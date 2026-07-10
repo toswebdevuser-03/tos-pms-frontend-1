@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Project, ProjectStatus, Member } from '../types'
+import { useState, useEffect, useMemo } from 'react'
+import { Project, Member } from '../types'
 import { assessRisk, RiskResult, RISK_COLOR } from '../risk'
 import { forecast, productiveOf, Forecast, VERDICT_COLOR, relativeDate } from '../forecast'
 import { buildDigestHtml, DigestRow } from '../report'
@@ -10,6 +10,7 @@ import Bars from './charts/Bars'
 import Icon, { DisciplineIcon } from './Icon'
 import { useFilters } from './FilterBar'
 import { useEscapeKey } from '../lib/useEscapeKey'
+import { useData } from '../context/DataContext'
 
 interface Props {
   projects: Project[]
@@ -39,33 +40,23 @@ export default function ExecDashboard({ projects, onClose, onSelect, onToast, in
   const [recipient, setRecipient] = useState('')
   const [sending, setSending] = useState(false)
   useEffect(() => { setRecipient(currentMember?.email || authUser?.email || '') }, [currentMember, authUser])
-  const [statusMap, setStatusMap] = useState<Record<number, string>>({})
-  const [data, setData] = useState<Record<number, { tasks: Row[]; ts: Row[]; open: number; members: number; memberList: Member[] }>>({})
-  const [loading, setLoading] = useState(true)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    const sres = await window.api.projects.statuses()
-    const sm: Record<number, string> = {}
-    if (sres.ok) (sres.data as ProjectStatus[]).forEach((s) => { if (s.overall) sm[s.project_id] = s.overall })
+  const { statusMap, tasksByProject, timesheetsByProject, rfisByProject, memberIdsForProject, loading } = useData()
+  const memberById = useMemo(() => new Map(members.map((m: Member) => [Number(m.id), m])), [members])
+  const data = useMemo<Record<number, { tasks: Row[]; ts: Row[]; open: number; members: number; memberList: Member[] }>>(() => {
     const d: Record<number, { tasks: Row[]; ts: Row[]; open: number; members: number; memberList: Member[] }> = {}
-    await Promise.all(projects.map(async (p) => {
-      const [t, h, r, q, m] = await Promise.all([
-        window.api.items.getByProject(p.id, 'task'),
-        window.api.items.getByProject(p.id, 'timesheet'),
-        window.api.items.getByProject(p.id, 'rfi'),
-        window.api.items.getByProject(p.id, 'query'),
-        window.api.projectMembers.get(p.id)
-      ])
-      const openRfi = r.ok ? (r.data as Row[]).filter((x) => x.status === 'Open' || x.status === 'Pending').length : 0
-      const openQ = q.ok ? (q.data as Row[]).filter((x) => x.status === 'Open' || x.status === 'Pending').length : 0
-      const ml = m.ok ? (m.data as Member[]) : []
-      // Exclude pending manual timesheet entries — they don't count until approved.
-      d[p.id] = { tasks: t.ok ? (t.data as Row[]) : [], ts: h.ok ? (h.data as Row[]).filter((x) => !x.pending) : [], open: openRfi + openQ, members: ml.length, memberList: ml }
-    }))
-    setStatusMap(sm); setData(d); setLoading(false)
-  }, [projects])
-  useEffect(() => { load() }, [load])
+    for (const p of projects) {
+      const memberIds = memberIdsForProject(p.id)
+      const memberList = memberIds.map((id) => memberById.get(Number(id))).filter(Boolean) as Member[]
+      d[p.id] = {
+        tasks: tasksByProject(p.id),
+        ts: timesheetsByProject(p.id),
+        open: rfisByProject(p.id).filter((x) => x.status === 'Open' || x.status === 'Pending').length,
+        members: memberIds.length,
+        memberList
+      }
+    }
+    return d
+  }, [projects, tasksByProject, timesheetsByProject, rfisByProject, memberIdsForProject, memberById])
 
   const rows = useMemo<PRow[]>(() => projects.map((p) => {
     const d = data[p.id] ?? { tasks: [], ts: [], open: 0, members: 0 }

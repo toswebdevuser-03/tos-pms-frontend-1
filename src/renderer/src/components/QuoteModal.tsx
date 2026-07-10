@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, Fragment } from 'react'
 import { Quote, Client, ToastFn } from '../types'
+
 import Icon from './Icon'
 import ConfirmDialog from './ConfirmDialog'
 import { useFilters } from './FilterBar'
@@ -11,6 +12,8 @@ import { roleRank, RANK_MANAGER } from '../roles'
 import {
   Draft, Status, today, niceDate, statusOf, dhOf, computeHours, QUOTE_CSS, quoteBody, wordHtml, fullHtml, esc, syncScope
 } from '../lib/quoteDoc'
+import { useClients, useCreateClient } from '../hooks/useClients'
+import { useQuotes, useCreateQuote, useUpdateQuote, useDeleteQuote } from '../hooks/useQuotes'
 
 interface Props {
   onClose: () => void
@@ -52,22 +55,18 @@ export default function QuoteModal({ onClose, onToast, onOpenProject }: Props) {
   useEscapeKey(onClose)
   const { currentMember, isLead, members } = useApp()
   const { projects: allProjects, refreshAll: refreshData } = useData()
-  const [quotes, setQuotes] = useState<Quote[]>([])
-  const [clients, setClients] = useState<Client[]>([])
-  const [loading, setLoading] = useState(true)
+  const { data: quotes = [] as Quote[], isLoading: loading } = useQuotes()
+  const { data: clients = [] as Client[] } = useClients()
+
   const [draft, setDraft] = useState<Draft | null>(null)
+
   const [saving, setSaving] = useState(false)
   const [addClient, setAddClient] = useState<{ name: string; company: string } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<Quote | null>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    const [qr, cr] = await Promise.all([window.api.quotes.list(), window.api.clients.list()])
-    if (qr.ok) setQuotes(qr.data as Quote[]); else onToast(qr.error ?? 'Could not load quotes', 'error')
-    if (cr.ok) setClients(cr.data as Client[])
-    setLoading(false)
-  }, [onToast])
-  useEffect(() => { load() }, [load])
+  // Quotes/clients are loaded through TanStack Query hooks.
+
+
 
   const nextQuoteNo = useMemo(() => {
     const yr = new Date().getFullYear()
@@ -126,17 +125,22 @@ export default function QuoteModal({ onClose, onToast, onOpenProject }: Props) {
     </div>
   )
 
+  const { mutateAsync: createClientMutate } = useCreateClient()
+  const { mutateAsync: createQuoteMutate } = useCreateQuote()
+  const { mutateAsync: updateQuoteMutate } = useUpdateQuote()
+  const { mutateAsync: deleteQuoteMutate } = useDeleteQuote()
+
   const createClientInline = async (): Promise<void> => {
+
     if (!addClient || !addClient.name.trim()) { onToast('Client name is required', 'error'); return }
-    const res = await window.api.clients.create(addClient)
+    const res = await createClientMutate(addClient)
     if (!res.ok) { onToast(res.error ?? 'Could not create client (name may exist)', 'error'); return }
-    const cr = await window.api.clients.list()
-    if (cr.ok) setClients(cr.data as Client[])
     const newId = (res.data as { id: number }).id
     setDraft((d) => (d ? { ...d, client_id: newId, client_name: addClient.name.trim() } : d))
     setAddClient(null)
     onToast('Client added')
   }
+
 
 
   // Persist with the chosen status. 'Approved' creates/syncs the project (and links the
@@ -152,11 +156,15 @@ export default function QuoteModal({ onClose, onToast, onOpenProject }: Props) {
     const payload: Draft = { ...d, project_hours: String(project), qc_hours: String(qc), status, approved: status === 'Approved', sent: status === 'Sent' || status === 'Approved' }
     setSaving(true)
     try {
-      const res = d.id ? await window.api.quotes.update(d.id, payload) : await window.api.quotes.create(payload)
-      if (!res.ok) { onToast(res.error ?? 'Save failed', 'error'); return }
+      const res = d.id
+        ? await updateQuoteMutate({ id: d.id, data: payload })
+        : await createQuoteMutate(payload)
+      if (!res.ok) { onToast((res as any).error ?? 'Save failed', 'error'); return }
+
       const quoteId = d.id ?? (res.data as { id: number }).id
 
-      if (status !== 'Approved') { onToast(d.id ? 'Quotation updated' : 'Quotation saved'); setDraft(null); load(); return }
+      if (status !== 'Approved') { onToast(d.id ? 'Quotation updated' : 'Quotation saved'); setDraft(null); return }
+
 
       let projectId = d.project_id
       const isNew = !projectId
@@ -169,7 +177,7 @@ export default function QuoteModal({ onClose, onToast, onOpenProject }: Props) {
           name: String(d.project_name ?? ''), client: String(d.client_name ?? ''), location: '',
           discipline: String(d.disciplines ?? ''), quoted_hours: String(project + qc), type: 'Miscellaneous', client_id: d.client_id ?? null
         })
-        if (!pr.ok || !pr.data) { onToast(pr.error ?? 'Quote saved, but the project could not be created', 'error'); setDraft(null); load(); return }
+        if (!pr.ok || !pr.data) { onToast(pr.error ?? 'Quote saved, but the project could not be created', 'error'); setDraft(null); return }
         projectId = pr.data.id
         if (currentMember) { try { await window.api.projectMembers.assign(projectId, currentMember.id) } catch { /* non-fatal */ } }
         await window.api.quotes.update(quoteId, { ...payload, project_id: projectId })
@@ -200,16 +208,17 @@ export default function QuoteModal({ onClose, onToast, onOpenProject }: Props) {
       }
 
       onToast(isNew ? `Approved — project “${d.project_name}” created with scope` : d.parent_quote_id ? 'Additional quote approved — project & scope updated' : 'Quote, project details & scope updated')
-      setDraft(null); load()
+      setDraft(null)
       if (isNew && projectId != null) onOpenProject?.(projectId)
     } finally { setSaving(false) }
   }
   const save = (): void => { if (draft) void persist(draft) }
 
   const remove = async (q: Quote): Promise<void> => {
-    const res = await window.api.quotes.delete(q.id)
-    if (res.ok) { onToast('Quotation deleted'); load() } else onToast(res.error ?? 'Delete failed', 'error')
+    const res = await deleteQuoteMutate(q.id)
+    if (res.ok) { onToast('Quotation deleted') } else onToast((res as any).error ?? 'Delete failed', 'error')
   }
+
 
   const printQuote = (q: Draft): void => {
     const w = window.open('', '_blank', 'width=900,height=1100')

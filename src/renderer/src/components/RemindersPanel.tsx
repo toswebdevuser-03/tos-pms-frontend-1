@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Reminder, Project } from '../types'
 import { useApp } from '../context/AppContext'
+import { useData } from '../context/DataContext'
 import Icon, { IconName } from './Icon'
 import { loadUpdates, getLastSeen, markSeen, getReadKeys, markKeysRead, ProjectUpdate } from '../lib/projectUpdates'
 import { useEscapeKey } from '../lib/useEscapeKey'
@@ -31,8 +32,8 @@ interface TaskRow extends Record<string, unknown> { id: number; project_id: numb
 export default function RemindersPanel({ projects, onClose, onToast, onNavigate, onCleared }: Props) {
   useEscapeKey(onClose)
   const { currentMember, members } = useApp()
+  const { tasks, refreshTasks } = useData()
   const [list, setList] = useState<Reminder[]>([])
-  const [myTasks, setMyTasks] = useState<TaskRow[]>([])
   const [updates, setUpdates] = useState<ProjectUpdate[]>([])
   const [seenAt, setSeenAt] = useState<string>(() => getLastSeen()) // NEW badges compare against this
   const [readKeys, setReadKeys] = useState<Set<string>>(() => getReadKeys())
@@ -44,17 +45,6 @@ export default function RemindersPanel({ projects, onClose, onToast, onNavigate,
     const res = await window.api.reminders.get()
     if (res.ok) setList(res.data as Reminder[])
     setUpdates(await loadUpdates(projects.map((p) => ({ id: p.id, name: p.name })), { me: currentMember?.id, members }))
-    // My tasks across projects (for "needs your response" + my upcoming).
-    const mine: TaskRow[] = []
-    if (currentMember) {
-      await Promise.all(projects.map(async (p) => {
-        const r = await window.api.items.getByProject(p.id, 'task')
-        if (r.ok) for (const t of r.data as Record<string, unknown>[]) {
-          if (String(t.assigned_member_id) === String(currentMember.id)) mine.push({ ...(t as TaskRow), project_id: p.id, projectName: p.name })
-        }
-      }))
-    }
-    setMyTasks(mine)
     setLoading(false)
   }, [projects, currentMember, members])
 
@@ -82,6 +72,7 @@ export default function RemindersPanel({ projects, onClose, onToast, onNavigate,
       id: t.id, project_id: t.project_id, name: t.name ?? '', assigned_member_id: t.assigned_member_id ?? '',
       deadline: t.deadline ?? '', status: t.status ?? 'Not Started', acceptance: t.acceptance ?? '', assigned_by: t.assigned_by ?? '', ...patch
     })
+    await refreshTasks()
     load()
   }
 
@@ -102,7 +93,12 @@ export default function RemindersPanel({ projects, onClose, onToast, onNavigate,
     else onToast(res.error ?? 'Email failed', 'error')
   }
 
-  const pending = myTasks.filter((t) => t.acceptance === 'Pending')
+  const projectNameById = new Map(projects.map((p) => [Number(p.id), p.name]))
+  const pending = currentMember
+    ? tasks
+      .filter((t) => String(t.assigned_member_id) === String(currentMember.id) && t.acceptance === 'Pending')
+      .map((t) => ({ ...(t as TaskRow), project_id: Number(t.project_id), projectName: projectNameById.get(Number(t.project_id)) ?? '' }))
+    : []
   const overdue = list.filter((r) => r.severity === 'overdue').length
   const go = (t: TaskRow): void => { if (onNavigate) { onNavigate(t.project_id, 'Tasks'); onClose() } }
 

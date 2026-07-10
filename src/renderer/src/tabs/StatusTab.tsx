@@ -1,7 +1,12 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { ProjectStatus, Member } from '../types'
 import { useApp } from '../context/AppContext'
+import { useData } from '../context/DataContext'
 import { roleRank, RANK_MANAGER } from '../roles'
+import { useItems } from '../hooks/useItems'
+import { useProjectMembersByProject } from '../hooks/useProjectMembers'
+import { useQueryClient } from '@tanstack/react-query'
+import { queryKeyFactory } from '../hooks/queryKeyFactory'
 
 const STATUS_OPTIONS = ['Yet to start', 'On-going', 'On-hold', 'Dispatched', 'Closed']
 const FACTOR: Record<string, number> = { 'Done': 1, 'In Progress': 0.5, 'Not Started': 0 }
@@ -22,32 +27,26 @@ interface Props {
 
 export default function StatusTab({ projectId, onToast }: Props) {
   const { isLead } = useApp() // project status is project setup: Team Lead+ may edit; others view only
+  const queryClient = useQueryClient()
+  const { refreshStatuses, refreshTasks } = useData()
+  const { data: statusRows = [] } = useItems('status', projectId)
+  const { data: tasks = [] } = useItems('task', projectId)
+  const { data: feedback = [] } = useItems('feedback', projectId)
+  const { data: members = [] } = useProjectMembersByProject(projectId)
   const [status, setStatus] = useState<ProjectStatus | null>(null)
   const [overall, setOverall] = useState('On-going')
   const [notes, setNotes] = useState('')
   const [dirty, setDirty] = useState(false)
-  const [tasks, setTasks] = useState<Record<string, unknown>[]>([])
-  const [members, setMembers] = useState<Member[]>([])
-  const [feedback, setFeedback] = useState<Record<string, unknown>[]>([])
 
-  const load = useCallback(async () => {
-    const res = await window.api.items.getByProject(projectId, 'status')
-    if (res.ok && (res.data as ProjectStatus[]).length > 0) {
-      const s = (res.data as ProjectStatus[])[0]
+  useEffect(() => {
+    if ((statusRows as ProjectStatus[]).length > 0) {
+      const s = (statusRows as ProjectStatus[])[0]
       setStatus(s); setOverall(normalizeStage(s.overall)); setNotes(s.notes)
     } else {
       setStatus(null); setOverall('On-going'); setNotes('')
     }
     setDirty(false)
-    const tres = await window.api.items.getByProject(projectId, 'task')
-    if (tres.ok) setTasks(tres.data as Record<string, unknown>[])
-    const mres = await window.api.projectMembers.get(projectId)
-    if (mres.ok) setMembers(mres.data as Member[])
-    const fres = await window.api.items.getByProject(projectId, 'feedback')
-    if (fres.ok) setFeedback(fres.data as Record<string, unknown>[])
-  }, [projectId])
-
-  useEffect(() => { load() }, [load])
+  }, [statusRows])
 
   // A project can only be Closed once every assigned member has feedback — EXCEPT
   // Managers and above, whose feedback is not required to close a project.
@@ -64,7 +63,11 @@ export default function StatusTab({ projectId, onToast }: Props) {
     await window.api.items.create('status', { project_id: projectId, overall, notes })
     onToast('Status saved')
     setDirty(false)
-    load()
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeyFactory.items.byProject('status', projectId) }),
+      refreshStatuses(),
+      refreshTasks()
+    ])
   }
 
   // weighted % from tasks

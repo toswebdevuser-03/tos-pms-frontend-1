@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useMemo } from 'react'
 import DataTable, { Column } from '../components/DataTable'
 import FormModal, { FieldDef } from '../components/FormModal'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -10,6 +10,10 @@ import { roleRank } from '../roles'
 import { DISCIPLINES, splitDisciplines } from '../disciplines'
 import { useFilters } from '../components/FilterBar'
 import { memberNameMap } from '../lib/people'
+import { useItems } from '../hooks/useItems'
+import { useProjectMembersByProject } from '../hooks/useProjectMembers'
+import { useQueryClient } from '@tanstack/react-query'
+import { queryKeyFactory } from '../hooks/queryKeyFactory'
 
 interface Props {
   projectId: number
@@ -21,27 +25,24 @@ type Row = Record<string, unknown>
 
 export default function TasksTab({ projectId, projectName, onToast }: Props) {
   const { isAdmin, isManager, currentMember } = useApp()
-  const { projects } = useData()
+  const { projects, refreshTasks } = useData()
+  const queryClient = useQueryClient()
   // Task discipline options = this project's disciplines (fall back to the full list).
   const discOptions = useMemo(() => {
     const d = splitDisciplines(projects.find((p) => p.id === projectId)?.discipline || '')
     return d.length ? d : DISCIPLINES
   }, [projects, projectId])
-  const [members, setMembers] = useState<Member[]>([])
-  const [rows, setRows] = useState<Row[]>([])
   const [modal, setModal] = useState<{ mode: 'add' | 'edit'; row?: Row } | null>(null)
   const [view, setView] = useState<'list' | 'board'>('list')
   const [confirmDelete, setConfirmDelete] = useState<Row | null>(null)
-
-  const load = useCallback(async () => {
-    const res = await window.api.items.getByProject(projectId, 'task')
-    if (res.ok) setRows(res.data as Row[])
-  }, [projectId])
-
-  useEffect(() => {
-    window.api.projectMembers.get(projectId).then((res) => { if (res.ok) setMembers(res.data as Member[]) })
-  }, [projectId])
-  useEffect(() => { load() }, [load])
+  const { data: rows = [] } = useItems('task', projectId)
+  const { data: members = [] } = useProjectMembersByProject(projectId)
+  const refreshRows = async (): Promise<void> => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeyFactory.items.byProject('task', projectId) }),
+      refreshTasks()
+    ])
+  }
 
   const nameById = useMemo(() => memberNameMap(members), [members])
 
@@ -138,19 +139,19 @@ export default function TasksTab({ projectId, projectName, onToast }: Props) {
 
     onToast(isNew ? 'Task added' : 'Task updated')
     setModal(null)
-    load()
+    await refreshRows()
   }
 
   const setAcceptance = async (row: Row, val: 'Accepted' | 'Declined'): Promise<void> => {
     await writeTask(row, { acceptance: val })
     onToast(val === 'Accepted' ? 'Task accepted' : 'Task declined')
-    load()
+    await refreshRows()
   }
 
   const handleDelete = async (row: Row): Promise<void> => {
     await window.api.items.delete('task', row.id as number)
     onToast('Task deleted')
-    load()
+    await refreshRows()
   }
 
   const handleExport = async (): Promise<void> => {

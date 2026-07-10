@@ -1,10 +1,12 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useApp } from '../context/AppContext'
 import { Member, Project } from '../types'
 import { roleLabel } from '../roles'
 import { splitDisciplines } from '../disciplines'
 import Icon from './Icon'
 import { useEscapeKey } from '../lib/useEscapeKey'
+import { useData } from '../context/DataContext'
+import { useProjectMembersByProject } from '../hooks/useProjectMembers'
 
 interface Props {
   projectId: number
@@ -20,33 +22,22 @@ interface Props {
 export default function ProjectMembersModal({ projectId, projectName, onClose, onToast, projects, projectDiscipline }: Props) {
   useEscapeKey(onClose)
   const { members, isLead } = useApp()
-  const [assigned, setAssigned] = useState<number[]>([])
+  const { tasks, refreshProjectMembers } = useData()
+  const { data: assignedMembers = [], refetch: refetchAssigned } = useProjectMembersByProject(projectId)
+  const assigned = useMemo(() => assignedMembers.map((m) => m.member_id), [assignedMembers])
   const [query, setQuery] = useState('')
-  const [openByMember, setOpenByMember] = useState<Map<string, number>>(new Map())
-
-  const load = useCallback(async () => {
-    const res = await window.api.projectMembers.get(projectId)
-    if (res.ok) setAssigned((res.data as Member[]).map((m) => m.id))
-  }, [projectId])
-  useEffect(() => { load() }, [load])
 
   // Availability = open (not Done) tasks assigned to each member across all projects.
-  useEffect(() => {
-    if (!projects || projects.length === 0) return
-    let cancelled = false
-    ;(async () => {
-      const counts = new Map<string, number>()
-      await Promise.all(projects.map(async (p) => {
-        const r = await window.api.items.getByProject(p.id, 'task')
-        if (r.ok) for (const t of r.data as Record<string, unknown>[]) {
-          const mid = String(t.assigned_member_id ?? '')
-          if (mid && t.status !== 'Done') counts.set(mid, (counts.get(mid) ?? 0) + 1)
-        }
-      }))
-      if (!cancelled) setOpenByMember(counts)
-    })()
-    return () => { cancelled = true }
-  }, [projects])
+  const openByMember = useMemo(() => {
+    const projectSet = new Set((projects ?? []).map((p) => Number(p.id)))
+    const counts = new Map<string, number>()
+    for (const t of tasks) {
+      if (projects && projects.length > 0 && !projectSet.has(Number(t.project_id))) continue
+      const mid = String(t.assigned_member_id ?? '')
+      if (mid && t.status !== 'Done') counts.set(mid, (counts.get(mid) ?? 0) + 1)
+    }
+    return counts
+  }, [tasks, projects])
 
   const projDisc = useMemo(() => splitDisciplines(projectDiscipline ?? ''), [projectDiscipline])
   const fitOf = useCallback((m: Member): boolean => {
@@ -84,7 +75,7 @@ export default function ProjectMembersModal({ projectId, projectName, onClose, o
       await window.api.projectMembers.assign(projectId, m.id)
       onToast(`${m.name} added to project`)
     }
-    load()
+    await Promise.all([refetchAssigned(), refreshProjectMembers()])
   }
 
   const showAvail = !!projects && projects.length > 0

@@ -9,6 +9,8 @@ import Icon, { IconName, DisciplineIcon } from './Icon'
 import Donut from './charts/Donut'
 import ConfirmDialog from './ConfirmDialog'
 import { useEscapeKey } from '../lib/useEscapeKey'
+import { useClients, useCreateClient, useDeleteClient, useUpdateClient } from '../hooks/useClients'
+
 
 interface Props {
   mode: 'data' | 'dashboard'
@@ -48,9 +50,8 @@ export default function ClientsModal({ mode, projects, onClose, onSelect, onToas
   useEscapeKey(onClose)
   const { isLead, isAdmin, members } = useApp() // isLead: manage registry; isAdmin: see quoted hrs
   const canManage = mode === 'data' && isLead
-  const { tasksByProject, timesheetsByProject, memberIdsForProject, statusMap } = useData()
-  const [clients, setClients] = useState<Client[]>([])
-  const [openByProject, setOpenByProject] = useState<Record<number, number>>({})
+  const { tasksByProject, timesheetsByProject, rfisByProject, memberIdsForProject, statusMap } = useData()
+  const { data: clients = [], isLoading: clientsLoading } = useClients()
   const [selKey, setSelKey] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   // Registry add/edit form (null = closed).
@@ -62,31 +63,13 @@ export default function ClientsModal({ mode, projects, onClose, onSelect, onToas
   const [downloading, setDownloading] = useState(false)
   const [confirmRemove, setConfirmRemove] = useState<Client | null>(null)
 
-  const loadClients = useCallback(async () => {
-    const res = await window.api.clients.list()
-    if (res.ok) setClients(res.data as Client[])
-    else onToast(res.error ?? 'Could not load clients', 'error')
-  }, [onToast])
-  useEffect(() => { loadClients() }, [loadClients])
-
-  // Open RFI/Query counts per project (one factor in the risk score).
-  useEffect(() => {
-    let alive = true
-    ;(async () => {
-      const open: Record<number, number> = {}
-      await Promise.all(projects.map(async (p) => {
-        const [r, q] = await Promise.all([
-          window.api.items.getByProject(p.id, 'rfi'),
-          window.api.items.getByProject(p.id, 'query')
-        ])
-        const o1 = r.ok ? (r.data as Row[]).filter((x) => x.status === 'Open' || x.status === 'Pending').length : 0
-        const o2 = q.ok ? (q.data as Row[]).filter((x) => x.status === 'Open' || x.status === 'Pending').length : 0
-        open[p.id] = o1 + o2
-      }))
-      if (alive) setOpenByProject(open)
-    })()
-    return () => { alive = false }
-  }, [projects])
+  const openByProject = useMemo(() => {
+    const open: Record<number, number> = {}
+    for (const p of projects) {
+      open[p.id] = rfisByProject(p.id).filter((x) => x.status === 'Open' || x.status === 'Pending').length
+    }
+    return open
+  }, [projects, rfisByProject])
 
   const rowOf = useCallback((p: Project): PRow => {
     const tks = tasksByProject(p.id)

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useMemo, useState } from 'react'
 import Donut from '../components/charts/Donut'
 import Bars from '../components/charts/Bars'
 import BurnUp from '../components/charts/BurnUp'
@@ -6,13 +6,16 @@ import CountUp from '../components/CountUp'
 import Icon, { IconName } from '../components/Icon'
 import SimilarProjects from '../components/SimilarProjects'
 import { DashboardSkeleton } from '../components/Skeleton'
-import { Member, Project } from '../types'
+import { Project } from '../types'
 import { useApp } from '../context/AppContext'
 import { assessRisk } from '../risk'
 import { buildBurnUp, forecast, VERDICT_LABEL, VERDICT_COLOR, relativeDate } from '../forecast'
 import { buildProjectReportHtml } from '../report'
 import { num, productiveHours as productiveOfRow } from '../lib/hours'
 import { useEscapeKey } from '../lib/useEscapeKey'
+import { useItems } from '../hooks/useItems'
+import { useProjectMembersByProject } from '../hooks/useProjectMembers'
+
 
 type DashWidgetKey = 'kpis' | 'forecast' | 'charts'
 const DASH_WIDGET_LABELS: Record<DashWidgetKey, string> = { kpis: 'KPI cards', forecast: 'Budget burn-up & forecast', charts: 'Charts' }
@@ -52,9 +55,27 @@ function StatCard({ icon, label, value, sub, accent, onClick }: { icon: IconName
 
 export default function DashboardTab({ projectId, projectName, onToast, quotedHours = 0, onNavigate, project, overall }: Props) {
   const { isAdmin } = useApp() // Project Lead+ may see quoted/budget; Employees see only logged (exhausted) hrs
-  const [data, setData] = useState<Record<string, Row[]>>({})
-  const [members, setMembers] = useState<Member[]>([])
-  const [loading, setLoading] = useState(true)
+
+  const { data: rfi = [], isLoading: rfiLoading } = useItems('rfi', projectId)
+  const { data: query = [], isLoading: queryLoading } = useItems('query', projectId)
+  const { data: dispatch = [], isLoading: dispatchLoading } = useItems('dispatch', projectId)
+  const { data: wip = [], isLoading: wipLoading } = useItems('wip', projectId)
+  const { data: qc = [], isLoading: qcLoading } = useItems('qc', projectId)
+  const { data: task = [], isLoading: taskLoading } = useItems('task', projectId)
+  const { data: timesheetRows = [], isLoading: timesheetLoading } = useItems('timesheet', projectId)
+  const { data: standard = [], isLoading: standardLoading } = useItems('standard', projectId)
+  const { data: scope = [], isLoading: scopeLoading } = useItems('scope', projectId)
+  const { data: input = [], isLoading: inputLoading } = useItems('input', projectId)
+
+  // Keep member list in cache, scoped to this project.
+  const { data: members = [] } = useProjectMembersByProject(projectId)
+
+  const loading = rfiLoading || queryLoading || dispatchLoading || wipLoading || qcLoading || taskLoading || timesheetLoading || standardLoading || scopeLoading || inputLoading
+
+  // Pending manual timesheet entries don't count until a Team Lead approves them.
+  const ts = timesheetRows.filter((t: Record<string, unknown>) => !t.pending)
+
+  // Dashboard widget preferences (kept as-is; we just removed the manual data loading).
   const [widgets, setWidgets] = useState<Record<DashWidgetKey, boolean>>(loadDashWidgetPrefs)
   const [customizeOpen, setCustomizeOpen] = useState(false)
   useEscapeKey(() => setCustomizeOpen(false))
@@ -64,26 +85,8 @@ export default function DashboardTab({ projectId, projectName, onToast, quotedHo
     return next
   })
 
-  const load = useCallback(async () => {
-    const types = ['rfi', 'query', 'dispatch', 'wip', 'qc', 'task', 'timesheet', 'standard', 'scope', 'input']
-    const out: Record<string, Row[]> = {}
-    await Promise.all(types.map(async (t) => {
-      const res = await window.api.items.getByProject(projectId, t)
-      if (res.ok) out[t] = res.data as Row[]
-    }))
-    setData(out)
-    const mres = await window.api.projectMembers.get(projectId)
-    if (mres.ok) setMembers(mres.data as Member[])
-    setLoading(false)
-  }, [projectId])
-
-  useEffect(() => { setLoading(true); load() }, [load])
-
-  const rfi = data.rfi ?? [], query = data.query ?? [], dispatch = data.dispatch ?? []
-  // Pending manual timesheet entries don't count until a Team Lead approves them.
-  const wip = data.wip ?? [], qc = data.qc ?? [], task = data.task ?? [], ts = (data.timesheet ?? []).filter((t: Record<string, unknown>) => !t.pending)
-  const standard = data.standard ?? [], scope = data.scope ?? [], input = data.input ?? []
   const go = (tab: string) => onNavigate ? (() => onNavigate(tab)) : undefined
+
 
   const count = (rows: Row[], k: string, v: string): number => rows.filter((r) => r[k] === v).length
 
@@ -115,9 +118,10 @@ export default function DashboardTab({ projectId, projectName, onToast, quotedHo
   const fc = forecast({ timesheets: ts, quoted: quotedHours, endDate: project?.end_date, taskPct: pct })
 
   // hours by member
+  // ProjectMemberLink doesn't include member names; resolve byMember via IDs only.
   const byMember = members.map((m) => ({
-    label: m.name,
-    value: ts.filter((t) => String(t.member_id) === String(m.id)).reduce((s, t) => s + num(t.total_hrs), 0),
+    label: String(m.member_id),
+    value: ts.filter((t) => String(t.member_id) === String(m.member_id)).reduce((s, t) => s + num(t.total_hrs), 0),
     color: COLORS.blue
   })).filter((b) => b.value > 0)
 
@@ -191,12 +195,13 @@ export default function DashboardTab({ projectId, projectName, onToast, quotedHo
           </div>
           <button className="btn btn-secondary btn-sm" onClick={statusPdf}><Icon name="file" size={15} /> Status PDF</button>
           <button className="btn btn-secondary btn-sm" onClick={exportPowerBI}><Icon name="download" size={15} /> Export for Power BI</button>
-          <button className="btn btn-secondary btn-sm" onClick={load}><Icon name="refresh" size={15} /> Refresh</button>
+          {/* TanStack Query handles refreshes/WS invalidations; this button intentionally removed manual data loading. */}
         </div>
       </div>
 
       {loading ? <DashboardSkeleton /> : (
       <div className="dashboard">
+
         {widgets.kpis && (
         <div className="kpi-grid">
           <StatCard icon="folder" label="Scope" value={scope.length} sub="items" accent={COLORS.blue} onClick={go('Scope')} />

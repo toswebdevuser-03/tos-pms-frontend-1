@@ -34,8 +34,10 @@ export default function RecycleBinModal({ onClose, onToast, onChanged }: Props) 
     if (res.ok) setRows(res.data as Project[])
     else onToast(res.error ?? 'Could not load the recycle bin', 'error')
     setLoading(false)
-  }, [onToast])
-  useEffect(() => { load() }, [load])
+  }, [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { load() }, [])
+
 
   const restore = async (p: Project): Promise<void> => {
     const res = await window.api.projects.restore(p.id)

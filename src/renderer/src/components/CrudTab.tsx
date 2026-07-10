@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useMemo, ReactNode } from 'react'
+import { useEffect, useMemo, useState, ReactNode } from 'react'
+
 import DataTable, { Column } from './DataTable'
 import FormModal, { FieldDef } from './FormModal'
 import ConfirmDialog from './ConfirmDialog'
@@ -6,6 +7,8 @@ import Icon from './Icon'
 import { useApp } from '../context/AppContext'
 import { ToastFn } from '../types'
 import { useFilters, FilterConfig, SelectFilter } from './FilterBar'
+import { useCreateItem, useDeleteItem, useItems, useUpdateItem } from '../hooks/useItems'
+
 
 interface Props {
   type: string
@@ -36,48 +39,53 @@ export default function CrudTab({
   canEditRow, canDeleteRow, editLabel, reloadSignal
 }: Props) {
   const { isAdmin } = useApp()
-  const [rows, setRows] = useState<Record<string, unknown>[]>([])
+
   const [modal, setModal] = useState<{ mode: 'add' | 'edit'; row?: Record<string, unknown> } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<Record<string, unknown> | null>(null)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const toggleSelect = (id: number): void => setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
   const toggleAll = (ids: number[], select: boolean): void => setSelected((s) => { const n = new Set(s); ids.forEach((id) => (select ? n.add(id) : n.delete(id))); return n })
 
-  const load = useCallback(async () => {
-    const res = await window.api.items.getByProject(projectId, type)
-    if (res.ok) { setRows(res.data as Record<string, unknown>[]); onData?.(res.data as Record<string, unknown>[]); setSelected(new Set()) }
-  }, [projectId, type, onData])
+  const { data: rows = [] } = useItems(type, projectId)
+  const createItem = useCreateItem(type, projectId)
+  const updateItem = useUpdateItem(type, projectId)
+  const deleteItem = useDeleteItem(type, projectId)
 
-  useEffect(() => { load() }, [load, reloadSignal])
+  useEffect(() => {
+    onData?.(rows)
+    setSelected(new Set())
+  }, [rows, onData])
+
 
   const handleSubmit = async (data: Record<string, string>) => {
     const extra = computeExtra ? computeExtra(data) : {}
     if (modal?.mode === 'edit' && modal.row) {
-      await window.api.items.update(type, { id: modal.row.id, project_id: projectId, ...data, ...extra })
+      await updateItem.mutateAsync({ id: modal.row.id, project_id: projectId, ...data, ...extra })
       onToast(`${singular} updated`)
     } else {
-      await window.api.items.create(type, { project_id: projectId, ...data, ...extra })
+      await createItem.mutateAsync({ project_id: projectId, ...data, ...extra })
       onToast(`${singular} added`)
     }
     setModal(null)
-    load()
   }
 
+
   const handleDelete = async (row: Record<string, unknown>) => {
-    await window.api.items.delete(type, row.id as number)
+    await deleteItem.mutateAsync(row.id as number)
+
     // Capture the row (minus server-managed fields) so the delete can be undone.
+
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { id, created_at, updated_at, created_by, updated_by, version, ...payload } = row
     onToast(`${singular} deleted`, 'success', {
       label: 'Undo',
       onClick: async () => {
-        await window.api.items.create(type, { project_id: projectId, ...payload })
+        await createItem.mutateAsync({ project_id: projectId, ...payload })
         onToast(`${singular} restored`)
-        load()
       }
     })
-    load()
   }
+
 
   const handleExport = async (selectedOnly = false) => {
     const data = selectedOnly ? rows.filter((r) => selected.has(r.id as number)) : rows
@@ -89,6 +97,7 @@ export default function CrudTab({
   }
 
   const canAdd = addAllowed ?? (!adminOnlyAdd || isAdmin)
+
 
   // Derive filters from the tab's own definitions: a dropdown for every select
   // field, a from/to range over the first date field, and free-text over columns.
@@ -113,6 +122,7 @@ export default function CrudTab({
   }, [fields, columns, singular])
 
   const baseRows = rowFilter ? rows.filter(rowFilter) : rows
+
   const { filtered: displayRows, bar, sortKey, sortDir, onHeaderSort } = useFilters(baseRows, filterConfig)
 
   return (
@@ -156,7 +166,8 @@ export default function CrudTab({
           isAdmin={isAdmin}
           attachmentsEntity={attachments ? { type, id: (modal.row?.id as number) ?? null } : undefined}
           onSubmit={handleSubmit}
-          onClose={() => { setModal(null); load() }}
+          onClose={() => { setModal(null) }}
+
           onToast={onToast}
         />
       )}

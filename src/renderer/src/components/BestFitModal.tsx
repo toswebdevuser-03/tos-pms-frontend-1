@@ -1,10 +1,12 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useMemo } from 'react'
 import { Project, Skill } from '../types'
 import { useApp } from '../context/AppContext'
 import { overallOf } from '../tabs/FeedbackTab'
 import { roleLabel } from '../roles'
 import Icon from './Icon'
 import { useEscapeKey } from '../lib/useEscapeKey'
+import { useData } from '../context/DataContext'
+import { useItemsByProjects } from '../hooks/useItems'
 
 interface Props {
   projects: Project[]
@@ -23,26 +25,16 @@ interface Ranked {
 export default function BestFitModal({ projects, onClose }: Props) {
   useEscapeKey(onClose)
   const { members } = useApp()
+  const { tasks: allTasks } = useData()
   const [required, setRequired] = useState('')
-  const [feedback, setFeedback] = useState<Row[]>([])
-  const [tasks, setTasks] = useState<Row[]>([])
   const [loading, setLoading] = useState(false)
   const [ranked, setRanked] = useState<Ranked[] | null>(null)
   const [method, setMethod] = useState<'ruflo' | 'lexical' | null>(null)
-
-  const load = useCallback(async () => {
-    const fb: Row[] = [], tk: Row[] = []
-    for (const p of projects) {
-      const [f, t] = await Promise.all([
-        window.api.items.getByProject(p.id, 'feedback'),
-        window.api.items.getByProject(p.id, 'task')
-      ])
-      if (f.ok) fb.push(...(f.data as Row[]))
-      if (t.ok) tk.push(...(t.data as Row[]))
-    }
-    setFeedback(fb); setTasks(tk)
-  }, [projects])
-  useEffect(() => { load() }, [load])
+  const projectIds = useMemo(() => projects.map((p) => p.id), [projects])
+  const projectIdSet = useMemo(() => new Set(projectIds), [projectIds])
+  const { data: feedbackMap = {} } = useItemsByProjects('feedback', projectIds)
+  const feedback = useMemo(() => projectIds.flatMap((id) => feedbackMap[id] ?? []), [feedbackMap, projectIds])
+  const tasks = useMemo(() => allTasks.filter((t) => projectIdSet.has(Number(t.project_id))), [allTasks, projectIdSet])
 
   const perf = useMemo(() => {
     const m = new Map<string, { overall: number; reviews: number }>()
