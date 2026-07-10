@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, Fragment } from 'react'
 import { Quote, Client, ToastFn } from '../types'
-
+import { Document, Paragraph, HeadingLevel, TextRun, ImageRun } from 'docx'
+import { parseDataUri, downloadWordDocx } from '../lib/docxExport'
 import Icon from './Icon'
 import ConfirmDialog from './ConfirmDialog'
 import { useFilters } from './FilterBar'
