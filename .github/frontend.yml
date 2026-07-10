@@ -1,0 +1,32 @@
+name: Frontend CI
+
+on:
+  push:
+    paths:
+      - "tos-pms-frontend/**"
+      - ".github/workflows/frontend.yml"
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: tos-pms-frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tos-pms-frontend/package-lock.json
+
+      - run: npm ci
+
+      - run: npm run lint
+
+      - run: npx tsc --noEmit
+
+      - run: npm run build

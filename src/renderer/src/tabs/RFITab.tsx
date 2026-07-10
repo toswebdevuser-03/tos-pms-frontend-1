@@ -274,47 +274,116 @@ export default function RFITab({ projectId, projectName, onToast }: Props) {
           <button className="btn btn-secondary btn-sm" onClick={() => exportFmt('ppt')}><Icon name="barChart" size={15} /> PPT</button>
         </div>
       </div>
+
       {rows.length > 0 && bar}
 
       {rows.length === 0 ? (
-        <div className="empty-table"><p>No RFIs or queries yet. Click <strong>New RFI / Query</strong> to raise one with point-by-point questions, images and responses.</p></div>
+        <div className="empty-table">
+          <p>No RFIs or queries yet. Click <strong>New RFI / Query</strong> to raise one with point-by-point questions, images and responses.</p>
+        </div>
       ) : (
         (() => {
           const fRows = filtered as Row[]
+          const allSel = fRows.length > 0 && fRows.every((r) => selected.has(r.id as number))
+          const toggleAll = (): void => setSelected((s) => {
+            const n = new Set(s)
+            fRows.forEach((r) => (allSel ? n.delete(r.id as number) : n.add(r.id as number)))
+            return n
+          })
 
-        const allSel = fRows.length > 0 && fRows.every((r) => selected.has(r.id as number))
-        const toggleAll = (): void => setSelected((s) => { const n = new Set(s); fRows.forEach((r) => (allSel ? n.delete(r.id as number) : n.add(r.id as number))); return n })
-        return (
-        <div className="table-wrap" style={{ padding: 0 }}>
-          <table>
-            <thead><tr><th style={{ width: 34 }}><input type="checkbox" title="Select all" checked={allSel} onChange={toggleAll} /></th><th style={{ width: 130 }}>No.</th><th style={{ width: 80 }}>Type</th><th style={{ width: 110 }}>Discipline</th><th>Summary</th><th style={{ width: 110 }}>Points</th><th style={{ width: 90 }}>Status</th><th style={{ width: 100 }}>Date</th><th style={{ width: 90 }}></th></tr></thead>
-            <tbody>
-              {fRows.map((r) => {
-                const pts = pointsOf(r); const ans = pts.filter(answered).length
-                const st = statusOf(r); const lg = isLegacy(r)
-                return (
-                  <tr key={r.id as number} className="home-row" onClick={() => startEdit(r)} style={{ cursor: 'pointer' }}>
-                    <td onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selected.has(r.id as number)} onChange={() => toggleSel(r.id as number)} /></td>
-                    <td><strong>{String(r.rfi_number || '—')}</strong>{lg && <span className="badge badge-archived" style={{ marginLeft: 4 }}>legacy</span>}</td>
-                    <td><span className="badge badge-design">{String(r.kind || 'RFI')}</span></td>
-                    <td>{String(r.discipline || (lg ? '—' : '—'))}</td>
-                    <td>{lg ? String(r.subject || '—') : (pts[0]?.text ? `${pts[0].text.slice(0, 60)}${pts[0].text.length > 60 ? '…' : ''}` : '—')}</td>
-                    <td>{lg ? '—' : `${ans}/${pts.length} answered`}</td>
-                    <td><span className={`badge ${st === 'Closed' ? 'badge-resolved' : 'badge-pending'}`}>{st}</span></td>
-                    <td>{String(r.submitted_date || '—')}</td>
-                    <td onClick={(e) => e.stopPropagation()} style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                      <button className="btn-icon" title={`Export this ${String(r.kind || 'RFI')} (Excel) — ${String(r.rfi_number || '')}_${projectName}`} onClick={() => exportOne(r)}><Icon name="download" size={16} /></button>
-                      <button className="btn-icon" title={lg ? 'View' : 'Edit'} onClick={() => startEdit(r)}><Icon name="edit" size={16} /></button>
-                      <button className="btn-icon danger" title="Delete" onClick={() => setConfirmDelete(r)}><Icon name="trash" size={16} /></button>
-                    </td>
+          return (
+            <div className="table-wrap" style={{ padding: 0 }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th style={{ width: 34 }}>
+                      <input type="checkbox" title="Select all" checked={allSel} onChange={toggleAll} />
+                    </th>
+                    <th style={{ width: 130 }}>No.</th>
+                    <th style={{ width: 80 }}>Type</th>
+                    <th style={{ width: 110 }}>Discipline</th>
+                    <th>Summary</th>
+                    <th style={{ width: 110 }}>Points</th>
+                    <th style={{ width: 90 }}>Status</th>
+                    <th style={{ width: 100 }}>Date</th>
+                    <th style={{ width: 90 }}></th>
                   </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-        )
-      })()}
+                </thead>
+                <tbody>
+                  {fRows.map((r) => {
+                    const pts = pointsOf(r)
+                    const ans = pts.filter(answered).length
+                    const st = statusOf(r)
+                    const lg = isLegacy(r)
+                    return (
+                      <tr
+                        key={r.id as number}
+                        className="home-row"
+                        onClick={() => startEdit(r)}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <td onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selected.has(r.id as number)}
+                            onChange={() => toggleSel(r.id as number)}
+                          />
+                        </td>
+
+                        <td>
+                          <strong>{String(r.rfi_number || '—')}</strong>
+                          {lg && <span className="badge badge-archived" style={{ marginLeft: 4 }}>legacy</span>}
+                        </td>
+
+                        <td><span className="badge badge-design">{String(r.kind || 'RFI')}</span></td>
+                        <td>{String(r.discipline || (lg ? '—' : '—'))}</td>
+
+                        <td>
+                          {lg
+                            ? String(r.subject || '—')
+                            : (pts[0]?.text
+                              ? `${pts[0].text.slice(0, 60)}${pts[0].text.length > 60 ? '…' : ''}`
+                              : '—')}
+                        </td>
+
+                        <td>{lg ? '—' : `${ans}/${pts.length} answered`}</td>
+
+                        <td><span className={`badge ${st === 'Closed' ? 'badge-resolved' : 'badge-pending'}`}>{st}</span></td>
+                        <td>{String(r.submitted_date || '—')}</td>
+
+                        <td onClick={(e) => e.stopPropagation()} style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          <button
+                            className="btn-icon"
+                            title={`Export this ${String(r.kind || 'RFI')} (Excel) — ${String(r.rfi_number || '')}_${projectName}`}
+                            onClick={() => exportOne(r)}
+                          >
+                            <Icon name="download" size={16} />
+                          </button>
+
+                          <button
+                            className="btn-icon"
+                            title={lg ? 'View' : 'Edit'}
+                            onClick={() => startEdit(r)}
+                          >
+                            <Icon name="edit" size={16} />
+                          </button>
+
+                          <button
+                            className="btn-icon danger"
+                            title="Delete"
+                            onClick={() => setConfirmDelete(r)}
+                          >
+                            <Icon name="trash" size={16} />
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )
+        })()}
       {confirmDelete && (
         <ConfirmDialog
           title="Delete RFI/Query"
@@ -331,9 +400,10 @@ export default function RFITab({ projectId, projectName, onToast }: Props) {
 // with their attachment images, per the "leave legacy as-is" decision.
 function LegacyDetail({ row, onBack, onDelete }: { row: Row; onBack: () => void; onDelete: () => void }): React.JSX.Element {
   const [imgs, setImgs] = useState<{ a: Attachment; url: string }[]>([])
+
   useEffect(() => {
     let alive = true
-    window.api.attachments.get('rfi', row.id as number).then(async (res) => {
+    void window.api.attachments.get('rfi', row.id as number).then(async (res) => {
       if (!res.ok) return
       const out: { a: Attachment; url: string }[] = []
       for (const a of res.data as Attachment[]) {
@@ -344,21 +414,49 @@ function LegacyDetail({ row, onBack, onDelete }: { row: Row; onBack: () => void;
     })
     return () => { alive = false }
   }, [row.id])
+
   return (
     <div className="tab-content">
       <div className="tab-toolbar">
-        <div className="tab-toolbar-left"><button className="btn btn-secondary btn-sm" onClick={onBack}><Icon name="arrowLeft" size={14} /> Back to list</button></div>
-        <div className="tab-toolbar-right"><button className="btn-icon danger" title="Delete" onClick={onDelete}><Icon name="trash" size={16} /></button></div>
+        <div className="tab-toolbar-left">
+          <button className="btn btn-secondary btn-sm" onClick={onBack}>
+            <Icon name="arrowLeft" size={14} /> Back to list
+          </button>
+        </div>
+        <div className="tab-toolbar-right">
+          <button className="btn-icon danger" title="Delete" onClick={onDelete}>
+            <Icon name="trash" size={16} />
+          </button>
+        </div>
       </div>
+
       <div className="rfi-legacy">
         <p className="attach-hint">Legacy entry (old format) — shown read-only.</p>
         <h3>{String(row.rfi_number || '')} · {String(row.subject || '')}</h3>
-        <p><strong>Type:</strong> {String(row.kind || 'RFI')} &nbsp; <strong>Status:</strong> {String(row.status || '—')} &nbsp; <strong>Date:</strong> {String(row.submitted_date || '—')}</p>
-        {!!row.description && <p><strong>Description:</strong><br />{String(row.description)}</p>}
-        {!!row.response && <p><strong>Response:</strong><br />{String(row.response)}</p>}
+
+        <p>
+          <strong>Type:</strong> {String(row.kind || 'RFI')} &nbsp;
+          <strong>Status:</strong> {String(row.status || '—')} &nbsp;
+          <strong>Date:</strong> {String(row.submitted_date || '—')}
+        </p>
+
+        {!!row.description && (
+          <p><strong>Description:</strong><br />{String(row.description)}</p>
+        )}
+        {!!row.response && (
+          <p><strong>Response:</strong><br />{String(row.response)}</p>
+        )}
+
         {imgs.length > 0 && (
           <div className="rfi-legacy-imgs">
-            {imgs.map(({ a, url }) => <img key={a.id} src={url} alt={a.filename} onClick={() => window.api.attachments.open(a.stored_path)} />)}
+            {imgs.map(({ a, url }) => (
+              <img
+                key={a.id}
+                src={url}
+                alt={a.filename}
+                onClick={() => window.api.attachments.open(a.stored_path)}
+              />
+            ))}
           </div>
         )}
       </div>
