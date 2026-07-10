@@ -3,7 +3,7 @@ import DataTable, { Column } from '../components/DataTable'
 import FormModal, { FieldDef } from '../components/FormModal'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Icon from '../components/Icon'
-import { Member } from '../types'
+
 import { useApp } from '../context/AppContext'
 import { useData } from '../context/DataContext'
 import { roleRank } from '../roles'

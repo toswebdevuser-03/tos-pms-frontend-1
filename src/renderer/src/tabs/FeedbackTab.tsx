@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import CrudTab from '../components/CrudTab'
 import { Column } from '../components/DataTable'
 import { FieldDef } from '../components/FormModal'
-import { Member } from '../types'
+
 import { useApp } from '../context/AppContext'
 import { roleRank } from '../roles'
 import { num } from '../lib/hours'

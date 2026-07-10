@@ -3,7 +3,7 @@ import CrudTab from '../components/CrudTab'
 import { Column } from '../components/DataTable'
 import { FieldDef } from '../components/FormModal'
 import Icon from '../components/Icon'
-import { Member } from '../types'
+
 import { useApp } from '../context/AppContext'
 import { memberNameMap } from '../lib/people'
 import { useProjectMembersByProject } from '../hooks/useProjectMembers'

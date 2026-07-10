@@ -275,10 +275,13 @@ export default function RFITab({ projectId, projectName, onToast }: Props) {
         </div>
       </div>
       {rows.length > 0 && bar}
+
       {rows.length === 0 ? (
         <div className="empty-table"><p>No RFIs or queries yet. Click <strong>New RFI / Query</strong> to raise one with point-by-point questions, images and responses.</p></div>
-      ) : (() => {
-        const fRows = filtered as Row[]
+      ) : (
+        (() => {
+          const fRows = filtered as Row[]
+
         const allSel = fRows.length > 0 && fRows.every((r) => selected.has(r.id as number))
         const toggleAll = (): void => setSelected((s) => { const n = new Set(s); fRows.forEach((r) => (allSel ? n.delete(r.id as number) : n.add(r.id as number))); return n })
         return (
