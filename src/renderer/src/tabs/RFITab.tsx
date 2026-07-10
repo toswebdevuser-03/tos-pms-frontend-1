@@ -553,3 +553,45 @@ function LegacyDetail({ row, onBack, onDelete }: { row: Row; onBack: () => void;
             <Icon name="arrowLeft" size={14} /> Back to list
           </button>
         </div>
+
+        <div className="tab-toolbar-right">
+          <button className="btn-icon danger" title="Delete" onClick={onDelete}>
+            <Icon name="trash" size={16} />
+          </button>
+        </div>
+      </div>
+
+      <div className="rfi-legacy">
+        <p className="attach-hint">Legacy entry (old format) — shown read-only.</p>
+        <h3>{String(row.rfi_number || '')} · {String(row.subject || '')}</h3>
+
+        <p>
+          <strong>Type:</strong> {String(row.kind || 'RFI')} &nbsp;
+          <strong>Status:</strong> {String(row.status || '—')} &nbsp;
+          <strong>Date:</strong> {String(row.submitted_date || '—')}
+        </p>
+
+        {!!row.description && (
+          <p><strong>Description:</strong><br />{String(row.description)}</p>
+        )}
+
+        {!!row.response && (
+          <p><strong>Response:</strong><br />{String(row.response)}</p>
+        )}
+
+        {imgs.length > 0 && (
+          <div className="rfi-legacy-imgs">
+            {imgs.map(({ a, url }) => (
+              <img
+                key={a.id}
+                src={url}
+                alt={a.filename}
+                onClick={() => window.api.attachments.open(a.stored_path)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
