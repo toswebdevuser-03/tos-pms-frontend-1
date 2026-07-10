@@ -409,7 +409,7 @@ export default function RFITab({ projectId, projectName, onToast }: Props) {
         </div>
       </div>
 
-      {rows.length > 0 && bar}
+      {rows.length > 0 ? bar : null}
 
       {rows.length === 0 ? (
         <div className="empty-table">

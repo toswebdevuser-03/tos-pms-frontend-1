@@ -51,7 +51,10 @@ export default function ClientsModal({ mode, projects, onClose, onSelect, onToas
   const { isLead, isAdmin, members } = useApp() // isLead: manage registry; isAdmin: see quoted hrs
   const canManage = mode === 'data' && isLead
   const { tasksByProject, timesheetsByProject, rfisByProject, memberIdsForProject, statusMap } = useData()
-  const { data: clients = [], isLoading: clientsLoading } = useClients()
+  const { data: clients = [] } = useClients()
+  const createClientMutate = useCreateClient()
+  const updateClientMutate = useUpdateClient()
+  const deleteClientMutate = useDeleteClient()
   const [selKey, setSelKey] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   // Registry add/edit form (null = closed).
@@ -126,7 +129,7 @@ export default function ClientsModal({ mode, projects, onClose, onSelect, onToas
   }, [groups, selKey])
 
   const sel = groups.find((g) => g.key === selKey) ?? null
-  const rows = sel?.rows ?? []
+  const rows = useMemo(() => sel?.rows ?? [], [sel])
 
   const k = useMemo(() => {
     const ongoing = rows.filter((r) => r.st === 'On-going').length
@@ -150,18 +153,18 @@ export default function ClientsModal({ mode, projects, onClose, onSelect, onToas
     setSaving(true)
     try {
       const res = editing.id
-        ? await window.api.clients.update(editing.id, { name: editing.name, company: editing.company })
-        : await window.api.clients.create({ name: editing.name, company: editing.company })
-      if (!res.ok) { onToast(res.error ?? 'Save failed — name may already exist', 'error'); return }
+        ? await updateClientMutate.mutateAsync({ id: editing.id, name: editing.name, company: editing.company })
+        : await createClientMutate.mutateAsync({ name: editing.name, company: editing.company })
+      if (!res.ok) { onToast((res as { error?: string }).error ?? 'Save failed — name may already exist', 'error'); return }
       onToast(editing.id ? 'Client updated' : 'Client added')
       if (!editing.id && (res.data as { id?: number })?.id) setSelKey(`c#${(res.data as { id: number }).id}`)
-      setEditing(null); loadClients()
+      setEditing(null)
     } finally { setSaving(false) }
   }
   const removeClient = async (c: Client): Promise<void> => {
-    const res = await window.api.clients.delete(c.id)
-    if (res.ok) { onToast('Client deleted'); setEditing(null); loadClients() }
-    else onToast(res.error ?? 'Delete failed', 'error')
+    const res = await deleteClientMutate.mutateAsync(c.id)
+    if (res.ok) { onToast('Client deleted'); setEditing(null) }
+    else onToast((res as { error?: string }).error ?? 'Delete failed', 'error')
   }
   const open = (id: number): void => { onSelect(id); onClose() }
 

@@ -23,7 +23,6 @@ interface Props {
   scopeIds?: number[]
 }
 
-type Row = Record<string, unknown>
 const C = { blue: '#3b82f6', green: '#22c55e', amber: '#f59e0b', red: '#ef4444', purple: '#a78bfa', slate: '#94a3b8', cyan: '#06b6d4' }
 
 // Per-user (per-browser) Home Dashboard widget visibility — matches every other

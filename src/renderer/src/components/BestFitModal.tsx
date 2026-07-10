@@ -13,7 +13,6 @@ interface Props {
   onClose: () => void
 }
 
-type Row = Record<string, unknown>
 const avg = (ns: number[]): number => (ns.length ? ns.reduce((s, n) => s + n, 0) / ns.length : 0)
 
 interface Ranked {

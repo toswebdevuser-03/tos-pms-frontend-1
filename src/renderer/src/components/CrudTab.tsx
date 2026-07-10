@@ -30,13 +30,12 @@ interface Props {
   canEditRow?: (row: Record<string, unknown>) => boolean
   canDeleteRow?: (row: Record<string, unknown>) => boolean
   editLabel?: string
-  reloadSignal?: number
 }
 
 export default function CrudTab({
   type, singular, projectId, projectName, columns, fields, attachments,
   adminOnlyAdd, addAllowed, emptyHint, computeExtra, onToast, onData, toolbarExtra, headerExtra, rowFilter,
-  canEditRow, canDeleteRow, editLabel, reloadSignal
+  canEditRow, canDeleteRow, editLabel
 }: Props) {
   const { isAdmin } = useApp()
 
@@ -96,7 +95,7 @@ export default function CrudTab({
     else onToast(res.error ?? 'Export failed', 'error')
   }
 
-  const canAdd = addAllowed ?? (!adminOnlyAdd || isAdmin)
+  const canAdd = addAllowed ?? (adminOnlyAdd ? isAdmin : true)
 
 
   // Derive filters from the tab's own definitions: a dropdown for every select
@@ -129,13 +128,13 @@ export default function CrudTab({
     <div className="tab-content">
       <div className="tab-toolbar">
         <div className="tab-toolbar-left">
-          {canAdd && (
+          {canAdd ? (
             <button className="btn btn-primary btn-sm" onClick={() => setModal({ mode: 'add' })}>+ Add {singular}</button>
-          )}
+          ) : null}
           {toolbarExtra}
         </div>
         <div className="tab-toolbar-right">
-          {selected.size > 0 && <button className="btn btn-secondary btn-sm" onClick={() => handleExport(true)}><Icon name="download" size={15} /> Export selected ({selected.size})</button>}
+          {selected.size > 0 ? <button className="btn btn-secondary btn-sm" onClick={() => handleExport(true)}><Icon name="download" size={15} /> Export selected ({selected.size})</button> : null}
           <button className="btn btn-secondary btn-sm" onClick={() => handleExport(false)}><Icon name="download" size={15} /> Export all</button>
         </div>
       </div>

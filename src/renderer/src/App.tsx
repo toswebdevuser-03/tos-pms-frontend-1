@@ -511,7 +511,7 @@ import Icon from './components/Icon'
 import HomeDashboard from './components/HomeDashboard'
 import Topbar from './components/Topbar'
 import ProjectSidebar from './components/ProjectSidebar'
-import { AppProvider, useApp } from './context/AppContext'
+import { useApp } from './context/AppContext'
 import { DataProvider, useData } from './context/DataContext'
 import { splitDisciplines, DISCIPLINES } from './disciplines'
 import FormModal, { FieldDef } from './components/FormModal'
@@ -573,7 +573,7 @@ const CREATE_FIELDS: FieldDef[] = [
 ]
 
 function Shell() {
-  const { members, currentMember, setCurrentMember, isCompanyAdmin, isManager, isLead, isAdmin, authMode, authUser, logout, settings, authChecked } = useApp()
+  const { members, currentMember, setCurrentMember, isCompanyAdmin, isManager, isLead, isAdmin, authMode, authUser, logout, settings } = useApp()
   const { refreshAll: refreshData } = useData()
   const queryClient = useQueryClient()
 

@@ -27,7 +27,19 @@ interface Props {
 const SEV_LABEL: Record<string, string> = { overdue: 'Overdue', due: 'Due today', upcoming: 'Upcoming' }
 const KIND_ICON: Record<string, IconName> = { wip: 'clipboard', dispatch: 'upload', task: 'checkSquare', budget: 'barChart' }
 
-interface TaskRow extends Record<string, unknown> { id: number; project_id: number; projectName: string }
+interface TaskRow extends Record<string, unknown> {
+  id: number
+  project_id: number
+  projectName: string
+
+  // fields used in this component
+  name?: string
+  deadline?: string
+  assigned_member_id?: number | string
+  acceptance?: string
+  status?: string
+  assigned_by?: number | string
+}
 
 export default function RemindersPanel({ projects, onClose, onToast, onNavigate, onCleared }: Props) {
   useEscapeKey(onClose)
@@ -51,7 +63,10 @@ export default function RemindersPanel({ projects, onClose, onToast, onNavigate,
   // Clear the notifications: mark everything seen (removes NEW badges + topbar count)
   // and empty the recent-updates list from view.
   const clearAll = (): void => {
-    markSeen(); setSeenAt(getLastSeen()); setUpdates([]); onCleared?.()
+    markSeen()
+    setSeenAt(getLastSeen())
+    setUpdates([])
+    onCleared && onCleared()
     onToast('Inbox cleared')
   }
 
