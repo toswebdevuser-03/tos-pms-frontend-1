@@ -676,23 +676,53 @@ function lexical(a: string, b: string): number {
 }
 
 // ── Realtime: WebSocket to the backend's /ws ──────────────────────────────
+// Browsers never expose ping/pong frames to JS, so a socket can sit at
+// readyState OPEN while actually dead (sleep/wake, VPN hiccup, silently
+// dropped by a proxy). We track the last time *anything* arrived and force a
+// reconnect if the server's 30s heartbeat has clearly gone missing.
+// On every reconnect after the first connection we also emit a synthetic
+// 'catchup' event so the caller invalidates everything — any broadcasts that
+// happened while we were disconnected would otherwise be lost forever.
+const WATCHDOG_TIMEOUT_MS = 45_000
+const WATCHDOG_CHECK_MS = 10_000
+
 function subscribeRealtime(cb: (event: unknown) => void): () => void {
   if (!API_BASE) return () => { /* no backend */ }
   let socket: WebSocket | null = null
   let closed = false
   let timer: ReturnType<typeof setTimeout> | null = null
+  let watchdog: ReturnType<typeof setInterval> | null = null
+  let lastSeen = Date.now()
+  let hasConnectedBefore = false
   const wsBase = API_BASE.replace(/^http/, 'ws')
+
+  const clearWatchdog = (): void => { if (watchdog) { clearInterval(watchdog); watchdog = null } }
+
   const connect = (): void => {
     const token = getToken(); if (!token) { timer = setTimeout(connect, 4000); return }
     try {
       socket = new WebSocket(`${wsBase}/ws?token=${q(token)}`)
-      socket.onmessage = (e) => { try { cb(JSON.parse(e.data)) } catch { /* ignore */ } }
-      socket.onclose = () => { if (!closed) timer = setTimeout(connect, 4000) }
+      socket.onopen = () => {
+        lastSeen = Date.now()
+        if (hasConnectedBefore) { try { cb({ entity: 'catchup', action: 'update' }) } catch { /* ignore */ } }
+        hasConnectedBefore = true
+        clearWatchdog()
+        watchdog = setInterval(() => {
+          if (Date.now() - lastSeen > WATCHDOG_TIMEOUT_MS) { try { socket?.close() } catch { /* ignore */ } }
+        }, WATCHDOG_CHECK_MS)
+      }
+      socket.onmessage = (e) => { lastSeen = Date.now(); try { cb(JSON.parse(e.data)) } catch { /* ignore */ } }
+      socket.onclose = () => { clearWatchdog(); if (!closed) timer = setTimeout(connect, 4000) }
       socket.onerror = () => { try { socket?.close() } catch { /* ignore */ } }
     } catch { if (!closed) timer = setTimeout(connect, 4000) }
   }
   connect()
-  return () => { closed = true; if (timer) clearTimeout(timer); try { socket?.close() } catch { /* ignore */ } }
+  return () => {
+    closed = true
+    if (timer) clearTimeout(timer)
+    clearWatchdog()
+    try { socket?.close() } catch { /* ignore */ }
+  }
 }
 
 // ── The window.api surface ────────────────────────────────────────────────

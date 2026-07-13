@@ -32,6 +32,20 @@ export function useWebsocketQueryInvalidator() {
   const qc = useQueryClient()
   const { authMode } = useApp()
 
+  // Belt-and-suspenders: if the tab was backgrounded/suspended long enough
+  // that the OS froze timers (so even our WS reconnect logic didn't run),
+  // resync everything as soon as the tab is visible/focused again.
+  useEffect(() => {
+    if (authMode !== 'remote' && authMode !== 'local') return
+    const onVisible = (): void => { if (document.visibilityState === 'visible') qc.invalidateQueries() }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+    }
+  }, [qc, authMode])
+
   useEffect(() => {
     if (authMode !== 'remote' && authMode !== 'local') return
 
@@ -60,6 +74,9 @@ export function useWebsocketQueryInvalidator() {
 
         case 'projectMember':
           qc.invalidateQueries({ queryKey: queryKeyFactory.projectMembers.all() })
+          // Project visibility depends on BOTH projects and projectMembers caches.
+          // When assignments are created/updated, ensure projects is also refreshed.
+          qc.invalidateQueries({ queryKey: queryKeyFactory.projects.all() })
           break
 
         case 'item': {

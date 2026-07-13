@@ -589,7 +589,7 @@ function Shell() {
   // Derive statusMap from cached statuses
   const statusMap = useMemo(() => {
     const m: Record<number, string> = {}
-    ;(statusesRaw as ProjectStatus[]).forEach((s) => { if (s.overall) m[s.project_id] = s.overall })
+      ; (statusesRaw as ProjectStatus[]).forEach((s) => { if (s.overall) m[s.project_id] = s.overall })
     return m
   }, [statusesRaw])
 
@@ -920,6 +920,7 @@ function Shell() {
               onOpenRecycleBin={() => setFeature('recycleBin')}
               onToast={(m, t) => { showToast(m, t); queryClient.invalidateQueries({ queryKey: queryKeyFactory.reminders.all() }); queryClient.invalidateQueries({ queryKey: queryKeyFactory.statuses.all() }) }}
               updates={unseenUpdates}
+              onSeen={refreshUnseenUpdates}
             />
           ) : visibleProjects.length === 0 ? (
             <div className="empty-main">

@@ -16,7 +16,7 @@ function unwrap<T>(res: ApiResp<T>): T {
   return res.data
 }
 
-export function useMembers() {
+export function useMembers({ enabled = true }: { enabled?: boolean } = {}) {
   return useQuery<Member[]>({
     queryKey: queryKeyFactory.members.all(),
     queryFn: async () => {
@@ -25,5 +25,6 @@ export function useMembers() {
     },
     staleTime: 5 * 60 * 1000,  // 5 min
     gcTime: 10 * 60 * 1000,    // 10 min
+    enabled,
   })
 }

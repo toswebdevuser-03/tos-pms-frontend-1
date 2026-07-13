@@ -17,7 +17,7 @@ import ConfirmDialog from './ConfirmDialog'
 import { useApp } from '../context/AppContext'
 import { DISCIPLINES } from '../disciplines'
 import Icon, { DisciplineIcon } from './Icon'
-import { ProjectUpdate } from '../lib/projectUpdates'
+import { ProjectUpdate, markKeysRead } from '../lib/projectUpdates'
 
 const TABS = ['Dashboard', 'Scope', 'Input', 'RFI/Queries', 'Dispatch', 'Tasks', 'Status', 'QC', 'Meetings', 'Timesheet', 'Standards', 'Feedback'] as const
 type Tab = (typeof TABS)[number]
@@ -39,12 +39,14 @@ const PROJECT_FIELDS: FieldDef[] = [
   { key: 'client', label: 'Client' },
   { key: 'location', label: 'Location' },
   { key: 'discipline', label: 'Discipline', type: 'multiselect', options: DISCIPLINES },
-  { key: 'type', label: 'Project Type', type: 'select', optionValues: [
-    { label: '— Standard', value: '' },
-    { label: 'Man-month', value: 'Man-month' },
-    { label: 'Time-Sheet based', value: 'Time-Sheet based' },
-    { label: 'Miscellaneous', value: 'Miscellaneous' }
-  ] },
+  {
+    key: 'type', label: 'Project Type', type: 'select', optionValues: [
+      { label: '— Standard', value: '' },
+      { label: 'Man-month', value: 'Man-month' },
+      { label: 'Time-Sheet based', value: 'Time-Sheet based' },
+      { label: 'Miscellaneous', value: 'Miscellaneous' }
+    ]
+  },
   { key: 'quoted_hours', label: 'Quoted Hours (budget)', type: 'number' },
   { key: 'start_date', label: 'Start Date', type: 'date' },
   { key: 'end_date', label: 'Target End Date', type: 'date' }
@@ -60,9 +62,10 @@ interface Props {
   refreshKey?: number
   onOpenRecycleBin?: () => void
   updates?: ProjectUpdate[] // unseen updates across all visible projects; filtered here to this one
+  onSeen?: () => void // notify the caller to resync the unseen-updates list after we mark some read
 }
 
-export default function ProjectDetail({ project, onUpdate, onDelete, onToast, onBack, gotoTab, onOpenRecycleBin, updates = [] }: Props) {
+export default function ProjectDetail({ project, onUpdate, onDelete, onToast, onBack, gotoTab, onOpenRecycleBin, updates = [], onSeen }: Props) {
   const { isAdmin, isManager } = useApp()
   const [activeTab, setActiveTab] = useState<Tab>((gotoTab?.tab as Tab) || 'Dashboard')
   const [editing, setEditing] = useState(false)
@@ -71,18 +74,33 @@ export default function ProjectDetail({ project, onUpdate, onDelete, onToast, on
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [overall, setOverall] = useState<string>('')
 
-  // Per-tab unseen-update counts for this project (Tasks/RFI/Dispatch/Status), so the
+  // Per-tab unseen-update keys for this project (Tasks/RFI/Dispatch/Status), so the
   // tab bar shows where the new activity is instead of only a lump sum elsewhere.
-
-  const newCounts = useMemo(() => {
-    const m: Partial<Record<Tab, number>> = {}
+  // Keyed by ProjectUpdate.key (not just a count) so we can mark the individual
+  // updates read once the user actually opens that tab.
+  const newKeysByTab = useMemo(() => {
+    const m: Partial<Record<Tab, string[]>> = {}
     for (const u of updates) {
       if (u.projectId !== project.id) continue
       const t = KIND_TAB[u.kind]
-      m[t] = (m[t] ?? 0) + 1
+        ; (m[t] ??= []).push(u.key)
     }
     return m
   }, [updates, project.id])
+  const newCounts = useMemo(() => {
+    const m: Partial<Record<Tab, number>> = {}
+    for (const t of Object.keys(newKeysByTab) as Tab[]) m[t] = newKeysByTab[t]!.length
+    return m
+  }, [newKeysByTab])
+
+  // Viewing a tab marks its unseen updates read — same effect as opening the Inbox,
+  // just scoped to whichever tab the user is actually looking at.
+  useEffect(() => {
+    const keys = newKeysByTab[activeTab]
+    if (!keys || !keys.length) return
+    markKeysRead(keys)
+    onSeen?.()
+  }, [activeTab, newKeysByTab, onSeen])
 
   const loadMeta = useCallback(async () => {
     const result: Record<string, number> = {}
@@ -169,7 +187,7 @@ export default function ProjectDetail({ project, onUpdate, onDelete, onToast, on
         {TABS.filter((t) => t !== 'Feedback' || isAdmin).map((t) => (
           <button key={t} className={`tab-btn${activeTab === t ? ' active' : ''}`} onClick={() => setActiveTab(t)}>
             {TAB_LABEL[t] ?? t}
-            {COUNT_TYPES[t] && counts[t] > 0 && <span className="tab-count">{counts[t]}</span>}
+            {!!newCounts[t] && <span className="reminder-pill" title="Unseen updates">{newCounts[t]}</span>}
           </button>
         ))}
       </div>

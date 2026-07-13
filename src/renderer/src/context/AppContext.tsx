@@ -57,9 +57,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [authChecked, setAuthChecked] = useState(false)
 
   // ── Members from TanStack Query cache ────────────────────────────────────────
-  // The query is gated by authMode: we only enable it once auth state is known.
-  // This prevents 401s on startup in remote mode.
-  const { data: members = [] } = useMembers()
+  // Gate the members fetch on auth being resolved.
+  // - local mode: fire as soon as authMode is known (no login required)
+  // - remote mode: only fire after authChecked=true AND user is logged in
+  // This prevents the 401 error on the login screen.
+  const membersEnabled = authMode === 'local' || (authMode === 'remote' && authChecked && !!authUser)
+  const { data: members = [] } = useMembers({ enabled: membersEnabled })
 
   const refreshSettings = useCallback(async () => {
     const res = await window.api.settings.get()
