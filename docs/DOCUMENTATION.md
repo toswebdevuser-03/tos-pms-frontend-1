@@ -329,3 +329,6 @@ User logins follow the formula `TOS@<first5ofname><id>`.
 - **Productive hours** — execution + overtime (the hours measured against the quote).
 - **Quoted hours** — Project Hours + QC Hours from the approved quotation.
 - **Yet to start** — an active project with zero productive hours logged.
+
+
+## Adde Cloudflare in live website
