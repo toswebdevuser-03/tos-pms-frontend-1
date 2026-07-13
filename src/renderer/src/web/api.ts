@@ -490,23 +490,49 @@ type Row = Record<string, unknown>
 // This avoids cross-origin CORS entirely (and the ngrok free-tier interstitial,
 // which strips CORS headers from fresh browsers' preflights).
 const API_BASE = (((import.meta as unknown as { env?: Record<string, string> }).env?.VITE_API_BASE_URL) || '').replace(/\/$/, '')
-const TOKEN_KEY = 'tos_token'
+// NEW — in-memory only, never persisted:
+let accessToken = ''
+const getToken = (): string => accessToken
+const setToken = (t: string): void => { accessToken = t || '' }
 
-const getToken = (): string => { try { return localStorage.getItem(TOKEN_KEY) || '' } catch { return '' } }
-const setToken = (t: string): void => { try { t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY) } catch { /* ignore */ } }
+let refreshTimer: ReturnType<typeof setInterval> | null = null
+function startProactiveRefresh(): void {
+  if (refreshTimer) clearInterval(refreshTimer)
+  refreshTimer = setInterval(tryRefresh, 10 * 60 * 1000) // e.g. every 10 min for a 15 min token
+}
+
 const authHeader = (): Record<string, string> => { const t = getToken(); return t ? { Authorization: `Bearer ${t}` } : {} }
+
+async function tryRefresh(): Promise<boolean> {
+  try {
+    const res = await fetch(API_BASE + '/auth/refresh', { method: 'POST', credentials: 'include' })
+    const json = await res.json().catch(() => null)
+    if (json?.ok && json.data?.token) { setToken(json.data.token); return true }
+  } catch { /* ignore */ }
+  return false
+}
 
 // Core request → returns the server's {ok,data,error} envelope (matches IPC).
 async function call<T>(method: string, path: string, body?: unknown): Res<T> {
-  try {
-    const res = await fetch(API_BASE + path, {
+  const doFetch = async (): Promise<Response> =>
+    fetch(API_BASE + path, {
       method,
+      credentials: 'include', // NEW — required so the refreshToken cookie is sent/received
       headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true', ...authHeader() },
       body: body !== undefined ? JSON.stringify(body) : undefined
     })
+
+  try {
+    let res = await doFetch()
+
+    if (res.status === 401 && path !== '/auth/refresh' && path !== '/auth/login') {
+      const refreshed = await tryRefresh()
+      if (refreshed) res = await doFetch() // retry once with the new access token
+      else setToken('')
+    }
+
     const json = (await res.json().catch(() => null)) as { ok: boolean; data?: T; error?: string } | null
     if (!json) return { ok: false, error: `Server returned ${res.status} ${res.statusText}` }
-    if (res.status === 401) setToken('')
     return json
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) }
@@ -957,19 +983,31 @@ function buildApi(): unknown {
     },
     auth: {
       state: async () => {
-        if (!getToken()) return { ok: true, data: { mode: 'remote', user: null } }
+        if (!getToken()) {
+          // No in-memory access token yet (e.g. page just reloaded) — try the
+          // refresh cookie before concluding the user is logged out.
+          const refreshed = await tryRefresh()
+          if (!refreshed) return { ok: true, data: { mode: 'remote', user: null } }
+          startProactiveRefresh()
+        }
         const me = await call<{ user: unknown }>('GET', '/auth/me')
-        // call() already clears token on 401; don't wipe a valid token for transient network errors
         if (!me.ok || !me.data) { return { ok: true, data: { mode: 'remote', user: null } } }
         return { ok: true, data: { mode: 'remote', user: me.data.user } }
       },
       login: async (email: string, password: string) => {
         const r = await call<{ token: string; user: unknown; mustReset: boolean }>('POST', '/auth/login', { email, password })
-        if (!r.ok || !r.data) return { ok: false, error: r.error || 'Login failed' }
-        setToken(r.data.token)
-        return { ok: true, data: { user: r.data.user, mustReset: r.data.mustReset } }
+        if (r.ok && r.data) {
+          setToken(r.data.token)
+          startProactiveRefresh()
+        }
+        return r
       },
-      logout: async () => { setToken(''); return { ok: true, data: null } },
+      logout: async () => {
+        await call('POST', '/auth/logout')
+        setToken('')
+        if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null }
+        return { ok: true, data: null }
+      },
       changePassword: (currentPassword: string, newPassword: string) => call('POST', '/auth/change-password', { currentPassword, newPassword })
     },
     ai: {
