@@ -333,7 +333,7 @@
 //     },
 //     csv: {
 //       export: async (type: string, projectName: string, rows: Row[]) => {
-//         download(`${type}_${projectName}.csv`, '﻿' + toCSV(rows), 'text/csv;charset=utf-8')
+//         //download(`${type}_${projectName}.csv`, '\uFEFF' + toCSV(rows), 'text/csv;charset=utf-8')
 //         return { ok: true, data: { filePath: `${type}_${projectName}.csv` } }
 //       },
 //       import: async (_type: string) => {
@@ -634,9 +634,9 @@ async function buildReminders(): Promise<Row[]> {
 
 
   const pName = new Map<number, string>()
-  ;(proj.data ?? []).forEach((p) => pName.set(Number(p.id), String(p.name ?? `Project ${p.id}`)))
+    ; (proj.data ?? []).forEach((p) => pName.set(Number(p.id), String(p.name ?? `Project ${p.id}`)))
   const mById = new Map<number, Row>()
-  ;(mem.data ?? []).forEach((m) => mById.set(Number(m.id), m))
+    ; (mem.data ?? []).forEach((m) => mById.set(Number(m.id), m))
   const who = (id: unknown): { name: string; email: string } => {
 
     if (!id) return { name: '', email: '' }
@@ -666,26 +666,26 @@ async function buildReminders(): Promise<Row[]> {
   // Budget: warn when a project's logged productive hours reach 80% of quoted.
   const numv = (v: unknown): number => { const n = parseFloat(String(v ?? '')); return isNaN(n) ? 0 : n }
   const loggedByProject = new Map<number, number>()
-  ;(ts.data ?? []).forEach((r) => {
-    if (r.pending) return // pending manual entries don't count until approved
-    const pid = Number(r.project_id)
-    loggedByProject.set(pid, (loggedByProject.get(pid) ?? 0) + numv(r.execution_hrs) + numv(r.overtime_hrs))
-  })
-  ;(proj.data ?? []).forEach((p) => {
-    const quoted = numv(p.quoted_hours)
-    if (quoted <= 0) return
-    const logged = Math.round((loggedByProject.get(Number(p.id)) ?? 0) * 10) / 10
-    const pct = Math.round((logged / quoted) * 100)
-    if (pct < 80) return
-    out.push({
-      key: `budget-${p.id}`, projectId: p.id, projectName: String(p.name ?? `Project ${p.id}`),
-      kind: 'budget',
-      title: pct >= 100
-        ? `Over budget — ${logged} / ${quoted} hrs used (${pct}%)`
-        : `${pct}% of quoted hours used — ${logged} / ${quoted} hrs`,
-      date: '', severity: pct >= 100 ? 'overdue' : 'due', assignee: '', assigneeEmail: ''
+    ; (ts.data ?? []).forEach((r) => {
+      if (r.pending) return // pending manual entries don't count until approved
+      const pid = Number(r.project_id)
+      loggedByProject.set(pid, (loggedByProject.get(pid) ?? 0) + numv(r.execution_hrs) + numv(r.overtime_hrs))
     })
-  })
+    ; (proj.data ?? []).forEach((p) => {
+      const quoted = numv(p.quoted_hours)
+      if (quoted <= 0) return
+      const logged = Math.round((loggedByProject.get(Number(p.id)) ?? 0) * 10) / 10
+      const pct = Math.round((logged / quoted) * 100)
+      if (pct < 80) return
+      out.push({
+        key: `budget-${p.id}`, projectId: p.id, projectName: String(p.name ?? `Project ${p.id}`),
+        kind: 'budget',
+        title: pct >= 100
+          ? `Over budget — ${logged} / ${quoted} hrs used (${pct}%)`
+          : `${pct}% of quoted hours used — ${logged} / ${quoted} hrs`,
+        date: '', severity: pct >= 100 ? 'overdue' : 'due', assignee: '', assigneeEmail: ''
+      })
+    })
 
   const rank: Record<Sev, number> = { overdue: 0, due: 1, upcoming: 2 }
   out.sort((a, b) => rank[a.severity as Sev] - rank[b.severity as Sev] || String(a.date).localeCompare(String(b.date)))
@@ -877,7 +877,7 @@ function buildApi(): unknown {
     },
     csv: {
       export: async (type: string, projectName: string, rows: Row[]) => {
-        download(`${type}_${projectName}.csv`, '﻿' + toCSV(rows), 'text/csv;charset=utf-8')
+        download(`${type}_${projectName}.csv`, '\uFEFF' + toCSV(rows), 'text/csv;charset=utf-8')
         return { ok: true, data: { filePath: `${type}_${projectName}.csv` } }
       },
       import: async (_type: string) => {

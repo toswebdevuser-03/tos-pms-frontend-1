@@ -42,7 +42,7 @@ export default function CrudTab({
   const [modal, setModal] = useState<{ mode: 'add' | 'edit'; row?: Record<string, unknown> } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<Record<string, unknown> | null>(null)
   const [selected, setSelected] = useState<Set<number>>(new Set())
-  const toggleSelect = (id: number): void => setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const toggleSelect = (id: number): void => setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
   const toggleAll = (ids: number[], select: boolean): void => setSelected((s) => { const n = new Set(s); ids.forEach((id) => (select ? n.add(id) : n.delete(id))); return n })
 
   const { data: rows = [] } = useItems(type, projectId)

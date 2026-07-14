@@ -16,7 +16,7 @@ interface Props {
   embedded?: boolean // rendered inside the Talent hub (body only, no modal chrome)
 }
 
-type Row = Record<string, unknown>
+
 const num = (v: unknown): number => { const n = parseFloat(String(v ?? '')); return isNaN(n) ? 0 : n }
 const avg = (ns: number[]): number => (ns.length ? Math.round((ns.reduce((s, n) => s + n, 0) / ns.length) * 10) / 10 : 0)
 const CRITERIA = ['quality', 'timeliness', 'communication', 'ownership'] as const
@@ -24,7 +24,7 @@ const CRITERIA = ['quality', 'timeliness', 'communication', 'ownership'] as cons
 export default function PerformanceModal({ projects, onClose, embedded }: Props) {
   // Escape should only dismiss this as a standalone modal — when embedded in the
   // Talent hub, TalentModal itself owns the overlay and its own Escape handler.
-  useEscapeKey(embedded ? () => {} : onClose)
+  useEscapeKey(embedded ? () => { } : onClose)
   const { currentMember, members, isLead } = useApp()
   const { tasks: allTasks } = useData()
   const projectIds = useMemo(() => projects.map((p) => p.id), [projects])
@@ -67,45 +67,45 @@ export default function PerformanceModal({ projects, onClose, embedded }: Props)
 
   const body = (
     <>
-          <p className="login-sub" style={{ marginBottom: 12 }}>
-            Ratings are averaged from per-project feedback. Task completion is across all visible projects.
-          </p>
-          {bar}
-          <table className="mini-table">
-            <thead>
-              <tr>
-                <th>Member</th><th>Reviews</th><th>Overall</th>
-                <th>Quality</th><th>Timeliness</th><th>Comm.</th><th>Ownership</th><th>Tasks done</th>
-              </tr>
-            </thead>
-            <tbody>
-              {stats.map((s) => (
-                <tr key={s.member.id}>
-                  <td><span className="cell-user"><Avatar name={s.member.name} size={26} />{s.member.name}<span className="role-chip" style={{ marginLeft: 4 }}>{roleLabel(s.member.role)}</span></span></td>
-                  <td>{s.fbCount}</td>
-                  <td>{s.overall ? <strong style={{ color: 'var(--accent)' }}>{s.overall} ★</strong> : '—'}</td>
-                  <td>{s.crit.quality || '—'}</td>
-                  <td>{s.crit.timeliness || '—'}</td>
-                  <td>{s.crit.communication || '—'}</td>
-                  <td>{s.crit.ownership || '—'}</td>
-                  <td>{s.taskTotal ? `${s.taskDone}/${s.taskTotal} · ${s.donePct}%` : '—'}</td>
-                </tr>
-              ))}
-              {stats.length === 0 && <tr><td colSpan={8} style={{ color: 'var(--text-dim)' }}>No members to show.</td></tr>}
-            </tbody>
-          </table>
+      <p className="login-sub" style={{ marginBottom: 12 }}>
+        Ratings are averaged from per-project feedback. Task completion is across all visible projects.
+      </p>
+      {bar}
+      <table className="mini-table">
+        <thead>
+          <tr>
+            <th>Member</th><th>Reviews</th><th>Overall</th>
+            <th>Quality</th><th>Timeliness</th><th>Comm.</th><th>Ownership</th><th>Tasks done</th>
+          </tr>
+        </thead>
+        <tbody>
+          {stats.map((s) => (
+            <tr key={s.member.id}>
+              <td><span className="cell-user"><Avatar name={s.member.name} size={26} />{s.member.name}<span className="role-chip" style={{ marginLeft: 4 }}>{roleLabel(s.member.role)}</span></span></td>
+              <td>{s.fbCount}</td>
+              <td>{s.overall ? <strong style={{ color: 'var(--accent)' }}>{s.overall} ★</strong> : '—'}</td>
+              <td>{s.crit.quality || '—'}</td>
+              <td>{s.crit.timeliness || '—'}</td>
+              <td>{s.crit.communication || '—'}</td>
+              <td>{s.crit.ownership || '—'}</td>
+              <td>{s.taskTotal ? `${s.taskDone}/${s.taskTotal} · ${s.donePct}%` : '—'}</td>
+            </tr>
+          ))}
+          {stats.length === 0 && <tr><td colSpan={8} style={{ color: 'var(--text-dim)' }}>No members to show.</td></tr>}
+        </tbody>
+      </table>
 
-          {stats.some((s) => s.comments.length > 0) && (
-            <div className="perf-comments">
-              <h4>Recent comments</h4>
-              {stats.flatMap((s) => s.comments.map((c, i) => (
-                <div className="perf-comment" key={`${s.member.id}-${i}`}>
-                  <strong>{s.member.name}</strong> <span className="perf-proj">· {c.project}</span>
-                  <div>{c.text}</div>
-                </div>
-              )))}
+      {stats.some((s) => s.comments.length > 0) && (
+        <div className="perf-comments">
+          <h4>Recent comments</h4>
+          {stats.flatMap((s) => s.comments.map((c, i) => (
+            <div className="perf-comment" key={`${s.member.id}-${i}`}>
+              <strong>{s.member.name}</strong> <span className="perf-proj">· {c.project}</span>
+              <div>{c.text}</div>
             </div>
-          )}
+          )))}
+        </div>
+      )}
     </>
   )
 

@@ -11,10 +11,10 @@ export const ml = (s?: string): string => esc(s).replace(/\n/g, '<br/>')
 export const today = (): string => new Date().toISOString().slice(0, 10)
 
 // Convert base64 data URI to safe format for Word - embed directly with inline styles
-const wordSafeImg = (dataUri?: string): string => {
-  if (!dataUri) return ''
-  return `<img src="${dataUri}" style="max-width:100%;max-height:90mm;border:1px solid #cfcfcf;display:block;margin:6px 0 14px 0;" alt=""/>`
-}
+// const wordSafeImg = (dataUri?: string): string => {
+//   if (!dataUri) return ''
+//   return `<img src="${dataUri}" style="max-width:100%;max-height:90mm;border:1px solid #cfcfcf;display:block;margin:6px 0 14px 0;" alt=""/>`
+// }
 
 
 export const niceDate = (d?: string): string => {
@@ -140,11 +140,11 @@ export function quoteBody(q: Draft): string {
     return html
   }
   const imgBlock = (src?: string): string => (src ? `<img class="q-img" src="${src}" alt=""/>` : '')
-  const wordImgBlock = (src?: string): string => {
-    if (!src) return ''
-    // Word-compatible image embedding: use inline data URI with style constraints
-    return `<div style="margin:6px 0 14px 0;"><img src="${src}" style="max-width:100%;max-height:90mm;border:1px solid #cfcfcf;display:block;" alt=""/></div>`
-  }
+  // const wordImgBlock = (src?: string): string => {
+  //   if (!src) return ''
+  //   // Word-compatible image embedding: use inline data URI with style constraints
+  //   return `<div style="margin:6px 0 14px 0;"><img src="${src}" style="max-width:100%;max-height:90mm;border:1px solid #cfcfcf;display:block;" alt=""/></div>`
+  // }
   const { project, qc } = computeHours(q)
 
   const head = [

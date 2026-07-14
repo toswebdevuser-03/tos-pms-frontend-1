@@ -6,61 +6,61 @@ interface Point { id?: string; text?: string; image?: string; response?: string 
 
 const s = (v: unknown): string => String(v ?? '')
 const esc = (s: unknown): string => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-const ml = (s: unknown): string => esc(s).replace(/\n/g, '<br/>')
+// const ml = (s: unknown): string => esc(s).replace(/\n/g, '<br/>')
 const isLegacy = (r: Row): boolean => !Array.isArray(r.points)
 const pointsOf = (r: Row): Point[] => (Array.isArray(r.points) ? (r.points as Point[]) : [])
 
-function download(filename: string, blob: Blob): void {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url; a.download = filename
-  document.body.appendChild(a); a.click(); a.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 1500)
-}
+// function download(filename: string, blob: Blob): void {
+//   const url = URL.createObjectURL(blob)
+//   const a = document.createElement('a')
+//   a.href = url; a.download = filename
+//   document.body.appendChild(a); a.click(); a.remove()
+//   setTimeout(() => URL.revokeObjectURL(url), 1500)
+// }
 
 // One RFI/Query rendered as a heading + a points table (S.No · Points · Image · Response).
-function rfiBlock(r: Row): string {
-  const num = esc(r.rfi_number || r.subject || '—')
-  const kind = esc(r.kind || 'RFI')
-  const disc = esc(r.discipline || '')
-  const status = esc(r.status || (isLegacy(r) ? '' : 'Open'))
-  const date = esc(r.submitted_date || '')
-  const meta = [kind, disc, status, date].filter(Boolean).join(' · ')
-  const head = `<h2 class="rfi-h">${num}${meta ? ` — ${meta}` : ''}</h2>`
+// function rfiBlock(r: Row): string {
+//   const num = esc(r.rfi_number || r.subject || '—')
+//   const kind = esc(r.kind || 'RFI')
+//   const disc = esc(r.discipline || '')
+//   const status = esc(r.status || (isLegacy(r) ? '' : 'Open'))
+//   const date = esc(r.submitted_date || '')
+//   const meta = [kind, disc, status, date].filter(Boolean).join(' · ')
+//   const head = `<h2 class="rfi-h">${num}${meta ? ` — ${meta}` : ''}</h2>`
 
-  if (isLegacy(r)) {
-    const rows = [
-      r.subject ? `<tr><th>Subject</th><td>${esc(r.subject)}</td></tr>` : '',
-      r.description ? `<tr><th>Description</th><td>${ml(r.description)}</td></tr>` : '',
-      r.response ? `<tr><th>Response</th><td>${ml(r.response)}</td></tr>` : ''
-    ].join('')
-    return head + (rows ? `<table class="rfi-t"><tbody>${rows}</tbody></table>` : '<p class="rfi-empty">No detail.</p>')
-  }
+//   if (isLegacy(r)) {
+//     const rows = [
+//       r.subject ? `<tr><th>Subject</th><td>${esc(r.subject)}</td></tr>` : '',
+//       r.description ? `<tr><th>Description</th><td>${ml(r.description)}</td></tr>` : '',
+//       r.response ? `<tr><th>Response</th><td>${ml(r.response)}</td></tr>` : ''
+//     ].join('')
+//     return head + (rows ? `<table class="rfi-t"><tbody>${rows}</tbody></table>` : '<p class="rfi-empty">No detail.</p>')
+//   }
 
-  const pts = pointsOf(r)
-  if (!pts.length) return head + '<p class="rfi-empty">No points.</p>'
-  const body = pts.map((p, i) => `<tr>
-    <td class="c-no">${i + 1}</td>
-    <td>${ml(p.text)}</td>
-    <td class="c-img">${p.image ? `<img src="${p.image}" alt=""/>` : ''}</td>
-    <td>${ml(p.response)}</td>
-  </tr>`).join('')
-  return head + `<table class="rfi-t"><thead><tr><th class="c-no">S. No.</th><th>Points</th><th class="c-img">Image</th><th>Response</th></tr></thead><tbody>${body}</tbody></table>`
-}
+//   const pts = pointsOf(r)
+//   if (!pts.length) return head + '<p class="rfi-empty">No points.</p>'
+//   const body = pts.map((p, i) => `<tr>
+//     <td class="c-no">${i + 1}</td>
+//     <td>${ml(p.text)}</td>
+//     <td class="c-img">${p.image ? `<img src="${p.image}" alt=""/>` : ''}</td>
+//     <td>${ml(p.response)}</td>
+//   </tr>`).join('')
+//   return head + `<table class="rfi-t"><thead><tr><th class="c-no">S. No.</th><th>Points</th><th class="c-img">Image</th><th>Response</th></tr></thead><tbody>${body}</tbody></table>`
+// }
 
-const WORD_CSS = `
-body{font-family:Calibri,'Segoe UI',Arial,sans-serif;font-size:11pt;color:#1a1a1a}
-h1{font-size:18pt;color:#c0392b;margin:0 0 4pt;border-bottom:2px solid #c0392b;padding-bottom:4pt}
-.rfi-sub{color:#666;font-size:10pt;margin:0 0 14pt}
-.rfi-h{font-size:13pt;margin:16pt 0 6pt;color:#111}
-.rfi-t{width:100%;border-collapse:collapse;margin:0 0 8pt}
-.rfi-t th,.rfi-t td{border:1px solid #b9b9b9;padding:5pt 7pt;vertical-align:top;text-align:left;font-size:10.5pt}
-.rfi-t thead th{background:#f1f2f4}
-.rfi-t .c-no{width:44pt;text-align:center}
-.rfi-t .c-img{width:170pt}
-.rfi-t .c-img img{max-width:160pt;max-height:120pt}
-.rfi-empty{color:#888;font-style:italic;margin:2pt 0 10pt}
-`
+// const WORD_CSS = `
+// body{font-family:Calibri,'Segoe UI',Arial,sans-serif;font-size:11pt;color:#1a1a1a}
+// h1{font-size:18pt;color:#c0392b;margin:0 0 4pt;border-bottom:2px solid #c0392b;padding-bottom:4pt}
+// .rfi-sub{color:#666;font-size:10pt;margin:0 0 14pt}
+// .rfi-h{font-size:13pt;margin:16pt 0 6pt;color:#111}
+// .rfi-t{width:100%;border-collapse:collapse;margin:0 0 8pt}
+// .rfi-t th,.rfi-t td{border:1px solid #b9b9b9;padding:5pt 7pt;vertical-align:top;text-align:left;font-size:10.5pt}
+// .rfi-t thead th{background:#f1f2f4}
+// .rfi-t .c-no{width:44pt;text-align:center}
+// .rfi-t .c-img{width:170pt}
+// .rfi-t .c-img img{max-width:160pt;max-height:120pt}
+// .rfi-empty{color:#888;font-style:italic;margin:2pt 0 10pt}
+// `
 
 export async function exportRfiWord(rows: Row[], projectName: string, fileName: string): Promise<void> {
   const children: Paragraph[] = []
@@ -99,12 +99,14 @@ export async function exportRfiWord(rows: Row[], projectName: string, fileName: 
     pts.forEach((p, i) => {
       const rowsTable = new Table({
         rows: [
-          new TableRow({ children: [
-            new TableCell({ width: { size: 10, type: WidthType.PERCENTAGE }, children: [new Paragraph({ children: [new TextRun({ text: `Point ${i + 1}` })] })] }),
-            new TableCell({ width: { size: 50, type: WidthType.PERCENTAGE }, children: [new Paragraph({ children: [new TextRun({ text: String(p.text || '') })] })] }),
-            new TableCell({ width: { size: 20, type: WidthType.PERCENTAGE }, children: [new Paragraph({ children: [new TextRun({ text: p.image ? 'Image' : '' })] })] }),
-            new TableCell({ width: { size: 20, type: WidthType.PERCENTAGE }, children: [new Paragraph({ children: [new TextRun({ text: String(p.response || '') })] })] }),
-          ]})
+          new TableRow({
+            children: [
+              new TableCell({ width: { size: 10, type: WidthType.PERCENTAGE }, children: [new Paragraph({ children: [new TextRun({ text: `Point ${i + 1}` })] })] }),
+              new TableCell({ width: { size: 50, type: WidthType.PERCENTAGE }, children: [new Paragraph({ children: [new TextRun({ text: String(p.text || '') })] })] }),
+              new TableCell({ width: { size: 20, type: WidthType.PERCENTAGE }, children: [new Paragraph({ children: [new TextRun({ text: p.image ? 'Image' : '' })] })] }),
+              new TableCell({ width: { size: 20, type: WidthType.PERCENTAGE }, children: [new Paragraph({ children: [new TextRun({ text: String(p.response || '') })] })] }),
+            ]
+          })
         ]
       })
       children.push(new Paragraph({ spacing: { after: 120 } }))
@@ -118,23 +120,23 @@ export async function exportRfiWord(rows: Row[], projectName: string, fileName: 
   })
 
   // const doc = new Document({ sections: [{ properties: { page: { margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 } } } }, children }] })
-     const doc = new Document({
-  sections: [
-    {
-      properties: {
-        page: {
-          margin: {
-            top: 1440,
-            right: 1440,
-            bottom: 1440,
-            left: 1440,
+  const doc = new Document({
+    sections: [
+      {
+        properties: {
+          page: {
+            margin: {
+              top: 1440,
+              right: 1440,
+              bottom: 1440,
+              left: 1440,
+            },
           },
         },
+        children,
       },
-      children,
-    },
-  ],
-})
+    ],
+  })
   await downloadWordDocx(fileName, doc)
 }
 

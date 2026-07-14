@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, Fragment } from 'react'
+import { useState, useMemo, Fragment } from 'react'
 import { Quote, Client, ToastFn } from '../types'
 import { Document, Paragraph, HeadingLevel, TextRun, ImageRun } from 'docx'
 import { parseDataUri, downloadWordDocx } from '../lib/docxExport'
@@ -11,7 +11,7 @@ import { DISCIPLINES, splitDisciplines } from '../disciplines'
 import { useEscapeKey } from '../lib/useEscapeKey'
 import { roleRank, RANK_MANAGER } from '../roles'
 import {
-  Draft, Status, today, niceDate, statusOf, dhOf, computeHours, QUOTE_CSS, quoteBody, wordHtml, fullHtml, esc, syncScope
+  Draft, Status, today, niceDate, statusOf, dhOf, computeHours, QUOTE_CSS, quoteBody, fullHtml, esc, syncScope
 } from '../lib/quoteDoc'
 import { useClients, useCreateClient } from '../hooks/useClients'
 import { useQuotes, useCreateQuote, useUpdateQuote, useDeleteQuote } from '../hooks/useQuotes'
@@ -228,7 +228,7 @@ export default function QuoteModal({ onClose, onToast, onOpenProject }: Props) {
     setTimeout(() => { try { w.print() } catch { /* manual */ } }, 350)
   }
   const downloadWord = async (q: Draft): Promise<void> => {
-    const fileName = (q.quote_no || 'Quotation').replace(/[^\w.\-]+/g, '_')
+    const fileName = (q.quote_no || 'Quotation').replace(/[^\w.-]+/g, '_')
     const doc = new Document({
       sections: [{
         properties: { page: { margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 } } },
@@ -289,7 +289,7 @@ export default function QuoteModal({ onClose, onToast, onOpenProject }: Props) {
               <div className="quote-form">
                 {draft.parent_quote_id && (
                   <p className="attach-hint">
-                    This is an <strong>additional quote</strong> linked to project <strong>{draft.project_name}</strong> — fill in the new scope of work below. On approval, its hours add to the project's total and the Manager is notified.
+                    This is an <strong>additional quote</strong> linked to project <strong>{draft.project_name}</strong> — fill in the new scope of work below. On approval, its hours add to the project&apos;s total and the Manager is notified.
                   </p>
                 )}
                 <div className="quote-form-section">Quotation details</div>

@@ -66,12 +66,12 @@ export default function RemindersPanel({ projects, onClose, onToast, onNavigate,
     markSeen()
     setSeenAt(getLastSeen())
     setUpdates([])
-    onCleared && onCleared()
+    if (onCleared) onCleared()
     onToast('Inbox cleared')
   }
 
   // Per-item read: tick specific recent updates, then mark just those as read.
-  const toggleUpd = (k: string): void => setSelectedUpd((s) => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n })
+  const toggleUpd = (k: string): void => setSelectedUpd((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n })
   const markSelectedRead = (): void => {
     if (!selectedUpd.size) return
     markKeysRead([...selectedUpd]); setReadKeys(getReadKeys())

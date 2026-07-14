@@ -2,11 +2,8 @@ import { useQuery } from '@tanstack/react-query'
 
 type Counts = Record<string, number>
 
-type ApiResp<T> = { ok: boolean; data: T; error?: string }
-const unwrap = <T,>(r: ApiResp<T>): T => {
-  if (!r.ok) throw new Error(r.error ?? 'API request failed')
-  return r.data
-}
+// type ApiResp<T> = { ok: boolean; data: T; error?: string }
+
 
 // Tab badge counts for a single project. This is a lightweight optimization
 // (batching 10 COUNT(*) calls into 1 endpoint) and can be tuned further later.
