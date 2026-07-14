@@ -31,13 +31,16 @@ export default function StandardsTab({ projectId, projectName, onToast }: Props)
     const res = await window.api.paths.open(p)
     if (!res.ok) onToast(res.error ?? 'Could not open path', 'error')
   }
+  // Browsers can't launch Explorer to a local/UNC path, so we copy it instead —
+  // the user pastes it into File Explorer's address bar. (Same pattern as PathTab.tsx)
   const reveal = async (p: string): Promise<void> => {
-    const res = await window.api.paths.reveal(p)
-    if (!res.ok) onToast(res.error ?? 'Could not reveal path', 'error')
+    try { await navigator.clipboard.writeText(p); onToast('Path copied — paste it into Explorer') }
+    catch { onToast('Could not copy path', 'error') }
   }
 
   const columns: Column[] = [
     { key: 'title', label: 'Standard' },
+
     { key: 'category', label: 'Category', width: '150px' },
     {
       key: 'path', label: 'Path', width: '220px',
@@ -46,7 +49,8 @@ export default function StandardsTab({ projectId, projectName, onToast }: Props)
           <div className="path-cell">
             <span className="path-text" title={String(v)}>{String(v)}</span>
             <button className="btn-icon" title="Open" onClick={(e) => { e.stopPropagation(); openPath(String(v)) }}><Icon name="externalLink" size={15} /></button>
-            <button className="btn-icon" title="Show in Explorer" onClick={(e) => { e.stopPropagation(); reveal(String(v)) }}><Icon name="folder" size={15} /></button>
+            <button className="btn-icon" title="Copy path" onClick={(e) => { e.stopPropagation(); reveal(String(v)) }}><Icon name="clipboard" size={15} /></button>
+
           </div>
         ) : (
           <span style={{ color: 'var(--text-dim)' }}>—</span>

@@ -2,38 +2,15 @@
   "name": "tos-tracker",
   "version": "1.0.0",
   "description": "TOS Tracker — web app for tracking architectural projects",
-  "main": "out/main/index.js",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "dev:desktop": "electron-vite dev",
-    "build:desktop": "electron-vite build",
-    "preview:desktop": "electron-vite preview",
-    "pack": "npm run build:desktop && electron-builder --dir",
-    "dist": "npm run build:desktop && electron-builder",
     "lint": "eslint ."
   },
   "keywords": [],
   "author": "Tesla Outsourcing Services",
   "license": "ISC",
-  "build": {
-    "appId": "com.teslaoutsourcing.tostracker",
-    "productName": "TOS Tracker",
-    "directories": {
-      "buildResources": "resources"
-    },
-    "files": [
-      "out/**/*"
-    ],
-    "win": {
-      "target": "nsis"
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true
-    }
-  },
   "devDependencies": {
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
@@ -41,9 +18,6 @@
     "@typescript-eslint/eslint-plugin": "^8.63.0",
     "@typescript-eslint/parser": "^8.63.0",
     "@vitejs/plugin-react": "^4.3.4",
-    "electron": "^33.4.0",
-    "electron-builder": "^25.1.8",
-    "electron-vite": "^2.3.0",
     "eslint": "^9.7.0",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.1.1",
@@ -53,9 +27,6 @@
     "vite": "^5.4.0"
   },
   "dependencies": {
-    "@electron-toolkit/preload": "^3.0.2",
-    "@electron-toolkit/tsconfig": "^2.0.0",
-    "@electron-toolkit/utils": "^4.0.0",
     "@tanstack/react-query": "^5.101.2",
     "@tanstack/react-query-devtools": "^5.101.2",
     "@types/nodemailer": "^8.0.1",
