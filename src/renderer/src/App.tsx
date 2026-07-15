@@ -898,7 +898,7 @@ function Shell() {
             </Suspense>
           ) : feature === 'alloc' ? (
             <Suspense fallback={null}>
-              <AllocationHub projects={visibleProjects} onClose={closeFeature} onToast={showToast} onChanged={() => { queryClient.invalidateQueries({ queryKey: queryKeyFactory.projectMembers.all() }); refreshData() }} />
+              <AllocationHub projects={visibleProjects} onClose={closeFeature} onToast={showToast} onChanged={() => { queryClient.invalidateQueries({ queryKey: queryKeyFactory.projectMembers.all() }) }} />
             </Suspense>
           ) : feature === 'workAlloc' ? (
             <Suspense fallback={null}>
@@ -964,7 +964,7 @@ function Shell() {
               One slot only: opening another swaps it in; ← Back returns here. */}
           {feature === 'assign' && (
             <Suspense fallback={null}>
-              <AssignmentsModal projects={projects as Project[]} onClose={closeFeature} onToast={showToast} onChanged={() => { queryClient.invalidateQueries({ queryKey: queryKeyFactory.projectMembers.all() }); refreshData() }} />
+              <AssignmentsModal projects={projects as Project[]} onClose={closeFeature} onToast={showToast} onChanged={() => { queryClient.invalidateQueries({ queryKey: queryKeyFactory.projectMembers.all() }) }} />
             </Suspense>
           )}
           {feature === 'talent' && (
